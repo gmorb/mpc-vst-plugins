@@ -1,0 +1,18 @@
+{
+  "id": "dragonfly-reverb",
+  "name": "Dragonfly Reverb",
+  "author": "sd88me",
+  "repo": "dragonfly-reverb/mpc-vst-dragonfly",
+  "kind": "effect",
+  "license": "GPL-3.0-only",
+  "source_available": true,
+  "summary": "Four free reverbs (Hall, Room, Plate, Early Reflections) ported to native insert effects for Gen 1 Akai MPC and Akai Force, with touchscreen pages, Q-Links mapping and presets.",
+  "style": "reverb",
+  "tags": ["dragonfly", "reverb", "freeverb3"],
+  "components": [
+    { "id": "dragonfly-hall", "name": "Hall", "kind": "effect", "uid": "4466486c" },
+    { "id": "dragonfly-room", "name": "Room", "kind": "effect", "uid": "4466526d" },
+    { "id": "dragonfly-plate", "name": "Plate", "kind": "effect", "uid": "4466506c" },
+    { "id": "dragonfly-early-reflections", "name": "Early Refl", "kind": "effect", "uid": "44664572" }
+  ]
+}
