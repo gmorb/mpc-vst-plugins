@@ -1,0 +1,17 @@
+{
+  "id": "dragonfly-plate",
+  "name": "Dragonfly Plate",
+  "author": "gmorb (port); Dragonfly Reverb by Michael Willis and Rob van den Berg",
+  "repo": "gmorb/mpc-vst-dragonfly",
+  "kind": "effect",
+  "license": "GPL-3.0-or-later",
+  "summary": "Plate reverb with three algorithms (Simple, Nested, Tank) and 8 presets; the original Dragonfly UI with its spectrogram.",
+  "style": "reverb",
+  "tags": [
+    "dragonfly",
+    "plate",
+    "presets"
+  ],
+  "homepage": "https://github.com/gmorb/mpc-vst-dragonfly",
+  "asset_pattern": "Plate-*-mpc-armv7.zip"
+}

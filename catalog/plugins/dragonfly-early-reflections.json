@@ -1,0 +1,17 @@
+{
+  "id": "dragonfly-early-reflections",
+  "name": "Dragonfly Early Reflections",
+  "author": "gmorb (port); Dragonfly Reverb by Michael Willis and Rob van den Berg",
+  "repo": "gmorb/mpc-vst-dragonfly",
+  "kind": "effect",
+  "license": "GPL-3.0-or-later",
+  "summary": "Early reflections only, 8 reflection types from Abrupt Echo to Home Studio; the original Dragonfly UI.",
+  "style": "reverb",
+  "tags": [
+    "dragonfly",
+    "early-reflections",
+    "room"
+  ],
+  "homepage": "https://github.com/gmorb/mpc-vst-dragonfly",
+  "asset_pattern": "Early-Refl-*-mpc-armv7.zip"
+}

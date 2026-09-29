@@ -1,0 +1,17 @@
+{
+  "id": "dragonfly-room",
+  "name": "Dragonfly Room",
+  "author": "gmorb (port); Dragonfly Reverb by Michael Willis and Rob van den Berg",
+  "repo": "gmorb/mpc-vst-dragonfly",
+  "kind": "effect",
+  "license": "GPL-3.0-or-later",
+  "summary": "Small-to-medium room reverb with low boost and damping, 25 presets in 5 banks; the original Dragonfly UI with its spectrogram.",
+  "style": "reverb",
+  "tags": [
+    "dragonfly",
+    "room",
+    "presets"
+  ],
+  "homepage": "https://github.com/gmorb/mpc-vst-dragonfly",
+  "asset_pattern": "Room-*-mpc-armv7.zip"
+}
