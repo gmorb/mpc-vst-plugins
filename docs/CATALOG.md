@@ -10,7 +10,8 @@ checksum and device-verification status, that stays correct without anyone editi
 3. **The zip is the source of truth, not the registry.** Every release zip carries a machine-readable manifest
    written by `tools/release.py`. The catalog reads and validates it; nobody types a version number.
 4. **Automatic on updates, human only on first entry.** A new plugin needs one reviewed PR. Later releases are
-   picked up and validated by CI; a failed validation hides that version and opens an issue on the plugin's repo.
+   picked up and validated by CI; a failed validation hides that version and opens an issue on this catalog repo (not when a newer release
+   of that plugin passes; see `tools/catalog_issues.py`).
 5. **Installers execute as root on someone's device.** So: open source only, checksums shown, canonical
    `install.sh` checked, previous versions kept, a maintainer can yank a version.
 6. **The catalog never hosts or links a build that contains someone else's firmware.** A port whose DSP is compiled
@@ -30,7 +31,7 @@ vst-release.yml  --release-->   nightly + on-dispatch workflow:       device scr
 
 ### Registry entry (`plugins/<id>.json`, hand-written once)
 `id`, `name`, `author`, `repo` (owner/name), `kind` (instrument | effect), `license`, `summary`, `screenshot`
-(optional path or URL), `asset_pattern` (default `*-mpc-armv7.zip`), `homepage` (optional). Nothing versioned.
+(optional `https://` URL; the site ignores anything else), `asset_pattern` (default `*-mpc-armv7.zip`), `homepage` (optional). Nothing versioned.
 
 ### Distribution types
 `distribution` in the registry entry: `release` (default; everything above) or `build-yourself`.
@@ -69,7 +70,7 @@ Versioned schema (`"schema": 1`) so the site and installers can evolve without b
 
 ### Validation (CI, per new version)
 Zip layout matches the spec; manifest matches the registry (`id`, `uid`, repo); `.so` is ARM ELF with
-GLIBC <= 2.32; `install.sh`/`uninstall.sh`/`plugin_list.awk` are identical to this repo's canonical copies (or a
+GLIBC <= 2.36 (above 2.32 it is listed as MPC OS 3.x only); `install.sh`/`uninstall.sh`/`plugin_list.awk` are identical to this repo's canonical copies (or a
 diff is flagged for manual review); checksums match; `uid` and `file=` name don't collide with any other catalog
 entry; license file present. This reuses code already in `tools/release.py`.
 
@@ -127,7 +128,13 @@ here first and move to its own repo (recommended, for community ownership) once 
 ### Phase 2: The catalog builder
 - [x] (2026-09-29; runs against real releases, checked 2026-10-02) `tools/catalog_build.py`: read `plugins/*.json`, list GitHub releases (API, token via Actions), download
       matching assets, validate, write `catalog.json` + `catalog.schema.json`. Idempotent and cached by asset id.
-- [ ] Failure handling: bad version excluded, previous good version kept, issue opened on the plugin repo.
+- [x] (2026-10-03, offline tests and a dry run against the live registry) Failure handling: bad version excluded,
+      previous good version kept, one issue per failing release on this repo (`tools/catalog_issues.py`). A failure
+      that a newer passing, unyanked release supersedes gets no issue (an old tag can't be rebuilt); an open issue
+      closes itself when its problem is gone or superseded; a closed per-tag title is never reopened (a tag can't
+      be rebuilt, even if its release asset is later replaced); a closed "repo cannot be read" title reopens if the
+      repo breaks again, since that one isn't tied to a fixed tag; duplicates close. Issues on the plugin's own
+      repo: not done.
 - [x] (`.github/workflows/catalog.yml`, builds and uploads an artifact; Pages deploy comes with Phase 3) Workflow: nightly cron + `repository_dispatch`/`workflow_dispatch`; an optional one-line "ping" step ports
       can add to their release workflow for instant updates.
 - [x] (registry rules and licence list; 'latest release validates' runs in the full build) PR check for registry PRs: schema, repo exists, latest release validates, uid unique. Issue template
@@ -136,7 +143,7 @@ here first and move to its own repo (recommended, for community ownership) once 
 
 ### Phase 3: The website
 - [x] `tools/catalog_site.py` generates the site from `catalog.json`; `catalog.yml` deploys with Pages on main (2026-09-29; checked in headless Chromium; Pages deploy live at https://sd88me.github.io/mpc-vst-plugins/).
-- [x] List with search, filters (kind, style, developer, license, beta) and sorting (updated, downloads, name, developer, kind), state kept in the URL hash; plugin page with history, install steps, checksum, source link.
+- [x] List with search, filters (kind, style, developer, license, MPC OS 2.x / 3.x, beta) and sorting (updated, downloads, name, developer, kind), state kept in the URL hash; plugin page with history, install steps, checksum, source link.
 - [x] Guide pages Install, Build, Workflow and Add yours (2026-09-29): Markdown in `catalog/pages/*.md`, rendered by `tools/catalog_site.py`
       with a shared menu; checked in headless Chromium at desktop and phone width.
 - [x] (2026-09-29; live, `feed.xml` and `catalog.tsv` both served, checked 2026-10-02) Atom feed `feed.xml`; "Tested on" from optional `tested.json` in the plugin repo; contributor docs in `catalog/README.md`.

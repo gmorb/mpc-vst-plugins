@@ -640,6 +640,11 @@ sets a per-component flag and did not remove it; zeroing `qlinkBoundsData` did n
 focus style transparent (`backgroundColour` and `outlineColour` `00000000`, `outlineThickness` 0). List tiles keep
 their selected look because that is baked into the tile image, not the focus ring. Page `qlinkBoundsData` is now
 `"0 0 0 0"` and every `hideQLinkBounds` is true.
+**Per-column outlines, opt-in (MPC One, 2026-09-30, MPC Plaits):** with `qlink_bounds=column` in the layout, pages get
+one `qlinkBoundsData` rectangle per Q-Link column (slots 1-4, 5-8, ...) and `hideQLinkBounds` is false, as in stock skins
+(AIR OPx-4): MPC outlines the column the Q-Links drive, and each press of the MPC One's Q-Link button moves the outline to
+the next one. Buttons count toward their column's box. The orange box above was the Focus outline, so hiding the bounds
+was never needed to fix it; still, the outline is only checked on an MPC One, so the default stays "0 0 0 0" and hidden.
 
 **Q-Links stuck on integer params (fixed in `wrapper/vst2_wrap.c`).** Symptom: a Q-Link on a 0..127 param flicked
 between two values on a slow turn and would not climb. Causes, in order: (1) the value went to the DSP as `%g` text
@@ -869,7 +874,7 @@ below are in 1/128 of the host's 0..1 range:
 
 ## 2026-10-03: MPC OS 2.15.1: plugins load, skins do not draw (user reports on an MPC Live, plus other 2.x users; not reproduced by us)
 
-Unit: MPC Live (first generation), MPC OS 2.15.1, Buildroot 2021.02, BusyBox userland (no `ldd`, `file`; `head -n`, not `head -3`), `armv7l`. MPC runs as `inmusic-mpc.service`; there is no `acvs`.
+Unit: MPC Live (first generation), MPC OS 2.15.1, Buildroot 2021.02, BusyBox userland (no `ldd`, `file`; `head -n`, not `head -3`; `tar` has no `-z`, so use `tar cf` and `gzip` separately if it exists), `armv7l`. **glibc 2.32** (measured 2026-10-05 by running the library: `/lib/libc.so.6` is executable and prints `GNU C Library (Buildroot) stable release version 2.32.`); the Force prints 2.39 the same way. `tools/mpc-store.sh` and the desktop app (PR #179) read it from that line, or from `libc-X.Y.so`. MPC runs as `inmusic-mpc.service`; there is no `acvs`.
 
 - **Service name.** Release zips built before the installers picked the service themselves ran `systemctl stop acvs` and aborted ("Unit acvs.service not loaded") before touching `MPC.settings`. Fixed in the installers and in the desktop app (a `systemctl` shim for old zips, desktop v0.3.2).
 - **glibc.** Builds that need `GLIBC_2.34` (`dladdr`, `pthread_*`: Dexed 1.0.1-1.0.2, JV-880 1.0.0-1.0.3, checked with `objdump -T`) were registered correctly (right `file=`, file present, executable) but MPC showed only "Load Plugin". Dexed 1.0.4 (needs 2.29) installed through the app loads: the log shows `Attempting to load VST`, `Creating VST instance`, `Initialising VST`. The two old releases per plugin are yanked in `catalog/yanked.json`.
@@ -1024,6 +1029,49 @@ Q-Link or the wheel after this change.
   click, 0.86 above the previous position), so the two cannot be told apart from one event; the 0.5 limit is the compromise that keeps
   wheel reversals right. Known limit: a fast drag over a short range can step one the wrong way at a time.
 
+## Restarting MPC from inside a plugin via `systemd-run` (MPC One, 2026-10-01)
+For a plugin that must restart MPC (e.g. to register a new `pluginList-arm` entry), the restart script must not be a plain
+child: `acvs.service` has `KillMode=control-group`, so `systemctl stop acvs` kills everything spawned from MPC.
+`systemd-run --unit=<name> --collect /bin/sh <script>` starts a transient service in its own cgroup instead. Verified:
+launched from a shell placed in `/system.slice/acvs.service` with `LD_PRELOAD=/usr/lib/libforce_cursor.so` set (as a
+plugin child would be), `systemd-run` returned 0; the script ran in `/system.slice/<name>.service` with `LD_PRELOAD`
+unset (systemd builds the unit's environment, nothing is inherited from MPC), stopped `acvs` (rc 0, inactive),
+survived the stop, started it again (new MPC pid, active ~8 s later). The device also has `unzip`, `sha256sum`, `wget`
+(BusyBox 1.36.1), `libarchive.so.13`, `libz.so.1`. On this unit `/sdcard` is an empty dir on the nearly full root fs
+(~17 MB free); plugins live in `/media/az01-internal/Synths`.
+
+## Plugin Manager POC: install from the MPC screen (MPC One, 2026-10-01)
+`mpc-vst-manager` (separate folder) lists `catalog.json` on the plugin's screen, queues installs/removals and applies them:
+the plugin downloads each zip with the system libcurl (`dlopen("libcurl.so.4")`, CA bundle `/etc/ssl/certs/ca-certificates.crt`),
+checks the catalog sha256 with `sha256sum`, unpacks with `unzip` (children spawned with a clean environment), writes `apply.sh`
+and starts it with `systemd-run`, which stops MPC, runs the package's own `install.sh -y [-n] -t /media/az01-internal/Synths`
+and starts MPC. Verified end to end with MPC Plaits 1.0.0: one plugin-list entry, settings backup made, MPC back up.
+Lessons: GitHub release downloads from the device can stall for tens of seconds (a 30 s low-speed abort failed at 4.5/7 MB),
+so resume with `CURLOPT_RESUME_FROM_LARGE` and retry; and text a worker thread changes is never redrawn unless the plugin
+sends `audioMasterUpdateDisplay`: `HAS_DISPLAY_REV` in the wrapper polls the engine's `display_rev` every ~100 ms for that.
+
+## MPC's filmstrip cache fills internal storage over a session (MPC One, 2026-10-01)
+Every time a plugin screen loads, MPC decodes its filmstrip images (knobs, sliders, `meter`s: `Knob` components with
+`knobType: FilmStrip`) into `/var/tmp/filmstrips/temp_<hex>.img`, raw RGBA, and never deletes them while running. `/var` is
+an overlay whose upper dir is on the internal data partition (`/data/system/var/overlay`, the same 2.7 GB partition as
+`/media/az01-internal`), so the cache eats the space plugins and settings live on. All files dated from the last boot,
+so a reboot seems to clear it (not confirmed); MPC restarts (`acvs`) don't. A test session with many plugin reloads
+and restarts reached 729 files / 2.2 GB and filled the partition (copies failed with "No space left on device").
+The files are not held open between loads, so `rm -f /var/tmp/filmstrips/temp_*.img` frees the space safely
+(delete through `/var`, never the overlay's upper dir).
+Size per load is frames × frame area × 4: filmstrip frames are square (`square_strip`), so a wide thin bar as a
+`meter` is very expensive (a 360×4 bar became 128 frames of 360×360 = 66 MB per load). For bars use `picture`
+(one image per step, mode images, no filmstrip), as the Plugin Manager does.
+
+## Device screenshots (MPC One, 2026-10-01)
+`/dev/fb0` exists but stays black: MPC draws through DRM/KMS. The scanout buffer is readable instead: `/dev/dri/card0`
+(the display; `card1` is the GPU and refuses KMS ioctls) has one active CRTC with an 800x1280 XRGB8888 buffer, linear
+(modifier 0), so GETFB2 + PRIME export + mmap gives the exact screen. The panel is portrait: rotate 270 degrees. The plugin
+area is 1280x628 at y=110 of the upright image. `tools/screenshot.sh` does all of it.
+Same on an MPC Key 37 (MPC 3.9.1.2, 2026-10-05): the same 800x1280 portrait scanout, upright after the rotation, and
+`--plugin` crops both an instrument's edit screen and an insert effect's screen cleanly (both headers are 110 px tall).
+The catalog shots for NAM, Chordsmith and Keyscope were taken this way.
+
 ## 2026-10-03: patches step (read only) in the installer app, offline only
 Design in `docs/PATCHES.md`. Built so far: the drum-pad patch script v4 (`status` ends with a `STATE` line; `install --confirmed` skips the typed question; `status` unmounts the bind mount of `/` that it opened, which v1-v3 left mounted: found by reading the script, fixed and checked with shimmed `mount`/`umount`/`mountpoint`), `catalog/patches.json` + `tools/patch_check.py` (the site build publishes it only if it validates), and step 7 of the app (list and `status` only; no apply). Checked on the host only: `tools/test_patches.py` (13 tests: the script contract against a synthetic stand-in for the MPC binary with its checksums rewritten, the checker, the site build), `go test -race` in `tools/desktop` (new `patches_test.go`, six mutations each fail a test), and `tools/desktop/ui_test/ui_patches.py` (Chromium, API stubbed). **Not run:** `tools/mpc_patch/test_script.sh` with Akai's real MPC (not in the repo), the app against a real Force, or any apply/undo from the app (not built).
 
@@ -1052,6 +1100,21 @@ whole number of 1/128 of the range, exact to float precision; a slow turn sends 
 Not tried: what MPC does with a read-back on a multiple of 1/128 for a whole number, and how the stock plugins handle the same Q-Link
 (ROADMAP). Per-param counting stays an opt-in in #90 (`qlink_ticks`) with this caveat.
 
+## Engine-driven skins: long text, when= panels and meters switch without a tap (MPC One, 2026-10-01, poc/uiprobe)
+`poc/uiprobe` (62 params, 152 IndexedEnabling parts, `HAS_DISPLAY_REV` + `PARAM_TEXT_MAX 128`), nothing touched:
+- **Value text up to 80+ characters shows in full** on a wide readout. The 23-character limit was only the wrapper's own
+  copy (`copy_str(…, 24)`); `PARAM_TEXT_MAX` raises it per port.
+- **when= panels follow values the engine changes by itself** (a 4-state phase every 2 s, three rows with a 6-way
+  button state and two badges, 40 three-way values every 0.5 s), once the wrapper reports them with
+  `audioMasterAutomate` (it does now under `HAS_DISPLAY_REV`, for every non-text, non-trigger param whose value moved).
+- **`meter` redraws live** from an engine-driven value (a 2 s sawtooth), pauses and resumes with it.
+- **A dense page stays responsive**: the 40-value tab cycling every 0.5 s, with pads, scrolling and tab switches normal.
+So a skin can be a real app screen: status lines, state-dependent buttons/badges/banners and progress bars, all driven
+from a worker thread.
+Since 2026-10-04 the wrapper re-reads every text readout every 100 ms anyway (see the readout poll above), which covers
+status text on its own. `HAS_DISPLAY_REV` runs on that same poll and adds the rest: values that aren't text (states,
+meters) and the `when=` panels that hang on them. Rebased on that poll 2026-10-05; not re-run on the device since.
+
 ## 2026-10-01: MIDI-generator and control-surface facts from Chordsmith on an MPC Key 37
 - **Own port echoes back.** MPC enables a plugin's new ALSA port for track input (`MidiDevices.AutoEnableForTracks`), so every note-on and note-off a MIDI-generating plugin sends comes back into its own track moments later, on the channel it was sent on (verified: output on ch2 returns on ch2, keys stay on ch1). Count sent ons and offs per channel and note and swallow exactly those; filtering only "a note-on for a note still sounding" lets a re-chord's note-offs through as keys let go, which in a mode where every note is a root ran away into a cascade of chords.
 - **MPC merges an echo with a held key on the same channel and note**: the key's note-off never reaches the plugin and its chord hangs. Default a generator's output to a channel other than the keys' (ch2). The merged echo's note-on never reaches the plugin either (verified 2026-10-01: the chord's other three echoes came back, the held note's did not, and no note-off followed the key release), so a plugin cannot detect the clash from the echo itself: Chordsmith flags it when a sent note on the keys' channel, for a key still held, has no echo back after 250 ms while other echoes have been seen.
@@ -1072,3 +1135,43 @@ Not tried: what MPC does with a read-back on a multiple of 1/128 for a whole num
   MPC start wrote empty cache files and an addin install failed with "No space left on device" (its `.new` staging kept the live install
   intact). The running MPC had none of the files open and deleting them freed the space. Whether a reboot clears the folder is not known.
 - Credit: found by jacob-sabella (PR #162, closed; written up here).
+
+## Knob filmstrips over 16384 px drift as they turn (MPC One, 2026-09-27, MPC Plaits)
+A knob with r=80 (170 px frames x 128 = 21760 px strip) visibly moved up and down on the screen while its value
+changed; r=58 knobs (126 px frames, 16128 px) on the same page were fine. Most likely MPC's image/texture limit of
+16384 px, beyond which the strip is resampled and the frame offsets no longer line up. Keep `2r+10 <= 128`, i.e.
+r <= 58 (the largest seen working; r=59 lands exactly on 16384 and is untested). `shadow_skin.py` now warns.
+
+## step_of on an option param (2026-09-27, MPC Plaits)
+`step_of`/`step_delta` now also works when the target is an option list: it steps by index, wrapping like a hardware
+selector button, and reports the new value with `audioMasterAutomate` from `processReplacing` so the host redraws
+anything bound to it (the value text, `IndexedEnabling` pictures). Used for Plaits' two model buttons (a `stepper`
+with `prev=`/`next=`). Verified offline; not yet on a device.
+
+## Eurorack/firmware DSP assumes zeroed RAM; a plugin's heap isn't (MPC One, 2026-09-27, MPC Plaits)
+Plaits' FM 2-Op engine and most engines after it played silence inside MPC but fine in every offline test (x86,
+32-bit ARM under QEMU, and `tools/bench.sh` on the device itself). A device log showed healthy raw engine output
+and LPG gain, yet the voice output stayed at Plaits' silence value. Cause: several engines' `Init()` never set
+some state (e.g. `FMEngine`'s downsampler taps). On the module that RAM is `.bss`, zeroed at boot; MPC's
+long-running process hands the plugin reused heap, so the state could start as NaN, which then stuck in the
+voice's LPG filter (a NaN reaches ARM's float->int conversion as 0, i.e. silence) and silenced every LPG engine
+on that voice. Fresh test processes get zeroed pages, which is why nothing offline ever failed. Reproduced
+offline by overriding `operator new` to fill allocations with 0xFF (`mpc-vst-plaits/tests/dirty_heap.cc`); fixed
+by allocating the engine state with `calloc` + placement new. For any port of firmware code: allocate its state
+zeroed, and run the host tests with a dirty heap.
+
+## 2026-10-05: ForceHD VST Exec (timomacquis, #150) read in full, adapted and tested offline; not yet run on a device by us
+The contributor shared his package (a systemd timer service that makes one folder of a `noexec` SSD executable) and gave it to the project (the maintainer's word; the maintainer is confirming the licence with him; a written confirmation on #150 is wanted). **Listed as untested** (2026-10-05): the maintainer has no SSD to test with, so the patch is marked untested in the manifest summary and the guides and testers are being asked for. All 25 files were read, nothing was run on a device; the shell files parse (`dash -n`), the distribution zip's scripts and units equal its `Source/`, no network access or `eval` anywhere.
+- **His evidence (his logs, a Force Gen1, MPC OS 3.9.1, kernel `6.18.26-az01`):** the SSD is an exFAT partition that `edisksd` mounts at `/media/<volume label>` as `rw,nosuid,nodev,noexec,relatime,nosymfollow,...` (the same line our SSD user reported). `dlopen` of a probe library on it fails with "failed to map segment from shared object"; inside his child bind mount (remounted with `exec`, parent unchanged) it loads; a copy outside the folder still fails. Persistent after a full reboot (bootstrap 1.17 s, MPC active at 7.4 s), Dexed and Plaits sound and reopen a saved project. His stated gaps: auto-loading a project before the SSD is ready, absent/late/reconnected disk cases, and the 0.1.3 uninstall and helper apply/revert were not validated on hardware; the English edition was never run on a Force.
+- **Our review found:** it hard-codes the drive name `/media/ForceHD` and the folder `vst`; the `/proc/self/mountinfo` compare (`awk '$5==p'`) cannot match a name with a space (the table writes `\040`; reproduced); our plugins keep the `.so` in `Synths/<skin>/`, which his folder choice leaves `noexec`; `status` exits non-zero when inactive and has no machine-readable line; the timer polls forever while the drive is absent; the unit goes into the factory image (`/usr/lib/systemd/system`, root remounted writable then restored). The mount logic itself is careful: `flock`, mount-ID ownership, parent-mount check, a rollback trap, no forced or lazy unmount.
+- **Adapted (version 0.2.0, `tools/mpc_patch/drive_exec`, **renamed "drive exec" on 2026-10-05**: nothing in it is specific to that drive or to a Force, "ForceHD" was the label of the contributor's own drive; the on-device names are `/etc/drive-exec`, `drive-exec.timer` and so on, so it never collides with his original `force-vst-exec`, which `status` reports and `install` refuses to touch, `reason=other-install`):** drive and folder chosen and strictly validated (the config is sourced by a root service), default folder `Synths`, mountinfo paths compared escaped, the empty `acvs` drop-in dropped, a wrapper with the `STATE` line (new state `partial`, new `reason=` tokens), typed words, one file. His three systemd units are his, with only the names changed.
+- **Tested offline, with real mounts** (`tools/test_drive_exec.py`, root, `unshare -m`): a `noexec` tmpfs at `/media/SSD - Force`; a compiled library really `dlopen`ed before, with, and after the patch (blocked, loads from `Synths`, outside stays blocked, blocked again after removal); the parent mount's id and options never change; install, status, uninstall, repeated apply, an absent drive, a plugin held by a process blocks removal, a failed install rolls back, the typed words, hostile drive and folder names (really mounted, e.g. a quote, `$(...)`), a foreign mount, another version, and the embedded files equal `src/`. Seven mutations of the script each fail a test. **Not covered (tmpfs is not exFAT, no systemd, no MPC):** a Force, exFAT specifics, a reboot, MPC loading a plugin from the folder, `Register plugin folders` after, and any firmware update. The patch is listed in `catalog/patches.json` (read-only in the app); applying it from the app is not built.
+
+## 2026-10-05: button remap as a device patch (hwremap), installer tested offline only
+`tools/mpc_patch/hwremap` vendors https://github.com/mmiroshnikov/akai_standalone_remap at `9d2aa57a570b` (MIT; `hwremap.c`, its host test, `configs/mpc-live.conf`, `configs/force.conf`, unchanged) and installs it the same way as the other device patches: one script, `status` / `install` / `uninstall`, a typed word, a backup under `/data/mpc-vst-plugins/backups`. Listed in `catalog/patches.json` as `button-remap`. The library is 32-bit ARM, built with `arm32v7/gcc:11-bullseye`; the highest glibc symbol it needs is 2.17 (`clock_gettime`), plus `pipe2` from 2.9.
+- **What the shim's author already tried** (that repo's README, not re-checked here): an MPC Live on Hakai, MPC 3.9.1, and a Force on stock firmware 3.9.0. Hakai gets `/usr/lib/hwremap.so` and a line in `/usr/bin/az01-launch-MPC`. The Force gets `/data/hwremap/hwremap.so` and a systemd drop-in that keeps the `LD_PRELOAD` already on `acvs`. Config is `/sdcard/hwremap.conf`.
+- **This installer** picks those two styles itself (launcher file, otherwise `acvs` or `inmusic-mpc`), stops and starts MPC, rolls back a failed install, and will not overwrite a config that is already there or a hwremap that was installed by hand. **Not run on a device.** Offline: `tools/test_hwremap_patch.py` (scratch root, shims; both styles, typed words, rollback, an edited config, a preload that is not a plain path; the unpacked library matches the built `.so`, and the same hex decodes identically with BusyBox awk). The library's host tests passed under ASan/UBSan in Docker (`gcc:11`). The manifest URL is pinned to `82e1c322f8a511e9c8546e9ad1f891b4df54c1c4`.
+- **Review fixes (offline, host-tested with a fake systemctl; not run on a device):** a launcher line with an unquoted `LD_PRELOAD=a.so cmd` now gets `:/usr/lib/hwremap.so` (a space made the library the command that ran), and the script checks the unpacked library's size and sha256 before it moves it into place (the awk unpacker has to emit NUL bytes, and a device awk that drops them would otherwise put a corrupt library into MPC's `LD_PRELOAD`). The script now also needs `wc`, `tr`, `cut` and `sha256sum`.
+
+## 2026-10-05: long integer lists skipped entries on a Q-Link and the wheel (Dexed banks, a Force); `nudge_pct` and `order=cols`
+Reported on a Force (Dexed 1.0.5 test build): on the BANKS tab the bank Q-Link and the wheel skipped several carts at a time. Cause, from the wrapper (`wrapper/vst2_wrap.c`, "whole numbers"): the bank index is an integer parameter spanning 0..998, and MPC sends a Q-Link event as the read-back value plus 1/128 of the range and a wheel click as plus 1/100 (NOTES "Input probe"), i.e. about 8 and 10 entries on that span; `settle()` rounds toward the move, so each event landed that far on (a short range such as 0..31 stays one step per event, as measured). Fix, opt-in per parameter: `"nudge_pct": N` (gen_vst.py, `param_t.nudge_pct`) makes any move up to N% of the range one step in its direction (combinable with `qlink_ticks`); a larger move still sets outright, and a move that lands on the minimum or maximum from inside that distance counts as a step, because MPC clamps what it sends (a nudge down from bank 3 sends 0, not -4.8). Test: `poc/steptest` has a `long` 0..998 param with `nudge_pct` 10, and `tools/host_test.c` checks six Q-Link events and six wheel clicks up one step each, back down to the minimum, a jump landing outright, and a clamped move at the top (all pass, `tools/test_port.sh poc/steptest/vst.json`, 31 checks). Offline only; not yet tried with a hand on the Force. Same report: the BANKS lists numbered across each row (1 2 / 3 4 ...), so a Q-Link stepping through them jumped left and right; `list ... order=cols` (`shadow_skin.list_keys`) numbers down each column first (left column 1..rows, then the next), so the lists read and step top to bottom.

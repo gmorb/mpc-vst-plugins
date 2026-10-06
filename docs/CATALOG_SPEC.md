@@ -53,18 +53,28 @@ anywhere, engines must find their data next to it (`wrapper/plugin_dir.h`, `MODU
 | `extras` | data shipped next to the `.so`, relative to the plugin folder |
 | `user_data` | list of folders inside the plugin folder that hold the user's own files; the installer keeps them (and moves them in from `/sdcard/vst` for an old-layout install) |
 | `arch` | ELF machine of the `.so`; the catalog accepts `armv7` only |
-| `max_glibc` | highest `GLIBC_x.y` symbol version needed; the catalog limit is 2.32 (MPC OS 2.x) |
+| `max_glibc` | highest `GLIBC_x.y` symbol version needed. Up to 2.32 (MPC OS 2.x) it can be 2.x-compatible; above that and up to 2.36 it is listed as MPC OS 3.x only (a warning); above 2.36 is an error (MPC OS 3.x has 2.39, the catalog toolchain 2.36) |
+| `os_compat` | `["2.x", "3.x"]` or `["3.x"]`: the MPC OS generations the plugin works on. `release.py` computes it (`tools/skin_compat.py`); a developer may narrow `["2.x", "3.x"]` to `["3.x"]` by hand, never widen it |
 | `about`, `requires` | one-line description; extra requirements |
 | `source_repo`, `license` | `owner/name` on GitHub; SPDX id. **Required for the catalog** |
 | `cpu` | `{p99_pct, max_pct, verdict}` from `tools/bench.sh -j`, or null |
 
 ## Validator rules (`catalog_check.py`)
 Errors (exit 1): unsafe paths; missing required file; manifest missing a field or wrong schema; bad id/version;
-`param_compat` != major; arch not armv7; GLIBC above 2.32; `.so` not ELF; a file missing from or wrong in `SHA256SUMS`;
+`param_compat` != major; arch not armv7; GLIBC above 2.36 (2.33 to 2.36 only warns, and the version is listed as MPC OS 3.x only); `.so` not ELF; a file missing from or wrong in `SHA256SUMS`;
 a plugin folder (`portable/<skin>/`) that is missing `version.xml`, `Plugin Skins/TUI.json`, `plugin-meta.xml`, the `.so` or
 an extra; a `plugin-meta.xml` whose `file=` is not `%payload-path%/<skin>/<so>` or whose `uid`/`name` disagree with the manifest;
+an `os_compat` that is not `["2.x","3.x"]` or `["3.x"]`, or that claims 2.x when the check below does not confirm it;
 an unknown `layout`; with `--catalog`, no `source_repo` or `license`; with `--expect-id/--expect-repo`, a registry mismatch.
 Zips of the old layout (no `layout` field) are checked against their own rules (`payload/`, `plugin.xml`).
+
+**MPC OS compatibility (`tools/skin_compat.py`, docs/OS2_SKINS.md).** The checker works out `os_compat` itself, for every version, so releases
+made before the field existed are classified too. A version is `2.x` and `3.x` when the `.so` needs glibc 2.32 or less and every
+object in `Plugin Skins/TUI.json` and `Q-Links.json` has a version, with fields, that the stock skins of MPC OS 2.15.1 use (the table is
+`tools/skin_roles_2x.json`: version numbers and field names only, rebuilt with `skin_compat.py build <stock Synths folder>`); otherwise it
+is `3.x` and the record carries `os_compat_why`, up to five short reasons ("TUI:tabs[] version 3 (2.15.1 uses 1)"). This is a check against
+one 2.x version's own skins, not a test on a 2.x unit: the site and installer should say so, and show a plain "2.x" only for versions
+with a 2.x device test in `tested.json`. Add-ons have no skin and carry no `os_compat`.
 Warnings (need a human look): `install.sh`/`uninstall.sh`/`plugin_list.awk` differ from the repo's current template
 (regenerated from the manifest and compared; not done for old-layout zips), `max_glibc` not recorded.
 
@@ -73,7 +83,7 @@ Warnings (need a human look): `install.sh`/`uninstall.sh`/`plugin_list.awk` diff
 { "id": "my-synth", "name": "My Synth", "author": "Someone", "repo": "someone/my-synth-vst",
   "kind": "instrument", "license": "MIT", "summary": "One line.",
   "style": "synth", "tags": ["poly"], "source_available": false,
-  "screenshot": "optional URL or path", "asset_pattern": "*-mpc-armv7.zip" }
+  "screenshot": "optional https URL", "asset_pattern": "*-mpc-armv7.zip" }
 ```
 `style` (one slug) and `tags` (slugs) are optional and drive the site filters. `source_available: true` is required
 when `license` is not on the open-source list; the site shows a "Restricted use" badge.
@@ -117,7 +127,7 @@ no valid tag, script missing at the newest tag, and (loudly, `LICENCE RISK`) a G
 `{"schema": 1, "generated": <ISO time>, "plugins": [ <registry fields> + "versions": [ <record>, ... ], "latest",
 "latest_beta", "downloads", "updated" ]}`, versions
 newest first. A record is what `catalog_check.py --json` prints (`version`, `size`, `sha256` of the zip,
-`param_compat`, `max_glibc`, `cpu`, `defer`, `manifest`) plus `url`, `date`, `channel` (`stable`|`beta`), `notes`, `yanked`
+`param_compat`, `max_glibc`, `os_compat`, `os_compat_why`, `cpu`, `defer`, `manifest`) plus `url`, `date`, `channel` (`stable`|`beta`), `notes`, `yanked`
 and `tested` (`[{device, firmware, date}]`), added by the builder.
 `defer` is true when the zip's `install.sh` understands `-n` (the caller stops and starts MPC), false for an older installer that restarts MPC by
 itself; batch installers (the desktop app, `mpc-store.sh`) run such a zip separately and use the flag to say how often MPC will restart.
@@ -143,7 +153,12 @@ zip uses `layout: "addin"`:
   `defer` is true for the installer (it understands `-n`).
 - **Registry:** `"kind": "addin"` on a release entry (never `build-yourself`); the builder refuses a release whose zip is an addin
   under a plugin entry, or the reverse.
-- **`catalog.tsv`:** `skin` and `uid` are `-`. `mpc-store.sh` installs an addin to `/data/mpc-addins/<id>` and reads the installed
+- **`catalog.tsv` columns** (tab separated, `-` when empty; clients read the ones they know and ignore extra ones): `plugin`, `id`, `version`, `latest`
+  (1 for the newest stable), `kind`, `name`, `skin`, `uid`, `param_compat`, `size`, `sha256`, `url`, `user_data` (comma list), `defer` (1 when the
+  installer understands `-n`), `os_compat` (`2.x,3.x`, `3.x` or `-`), `max_glibc` (the newest glibc the library needs, or `-`). `mpc-store.sh` and the
+  desktop app use the last two to warn about a plugin that will not load on the device (it needs a newer glibc than the device has) or is 3.x only on
+  a device that looks like MPC OS 2.x (glibc below 2.34); they warn and never block.
+- **`catalog.tsv`, addins:** `skin` and `uid` are `-`. `mpc-store.sh` installs an addin to `/data/mpc-addins/<id>` and reads the installed
   version from the folder's `addin.manifest` (`ADDIN_VERSION`), not from `.mpc-store`.
 
 ## Portable paths (for engines)

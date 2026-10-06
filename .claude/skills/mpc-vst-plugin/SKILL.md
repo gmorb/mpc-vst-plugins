@@ -26,7 +26,7 @@ Stop any separately attached audio engines first.
 2. **Generate + build**: `tools/build_port.sh <port>/vst.json` (steps 2-3 in one; Docker). `gen_vst.py` makes the
    params table from the port's parameter list (`tools/params.py`; VST index = order), the skin folder `<vendor> - VST - <name>/`
    (from vst.json's `layout`, else a studio auto-layout) and `pluginlist-entry.xml`. The compile uses
-   `arm32v7/gcc:11-bullseye` (glibc 2.31; MPC OS 2.x has 2.32, so `catalog_check.py` rejects anything above 2.32), `-fvisibility=hidden -shared -fPIC`, and links `wrapper/vst2_wrap.c` from this repo.
+   `arm32v7/gcc:11-bullseye` (glibc 2.31; MPC OS 2.x has 2.32, so `catalog_check.py` lists anything above 2.32, up to 2.36, as MPC OS 3.x only and rejects above 2.36), `-fvisibility=hidden -shared -fPIC`, and links `wrapper/vst2_wrap.c` from this repo.
 3. **Bench**: `tools/bench.sh build/x.so <ip>` must PASS before release (docs/BENCH.md).
 4. **Offline test first**: `tools/test_port.sh <port>/vst.json` builds `tools/host_test.c` with the port's sources and
    adapter on x86 under ASan/UBSan and must print PASSED: two instances, names, set/get, option select + nudge, stepping (wheel, Q-Link, sweep, reversal),
@@ -46,8 +46,11 @@ Stop any separately attached audio engines first.
   MPC sends a wheel click and a Q-Link event alike (the read-back value plus 0.01 / 1/128 of the range: docs/NOTES.md "Stepping of
   option lists and whole numbers"), so a short range races under a Q-Link; `"qlink_ticks": N` on a param (opt-in) counts N
   events per step (6 felt right on a Key 37), at the cost of N wheel clicks too, and feels sticky on a Force (docs/PORTING.md).
+  A LONG integer list (a bank list of up to 998) is the opposite case: one event is 1/128 of the range, so it skips eight entries at a
+  time; `"nudge_pct": 10` on that param makes any move up to 10% of the range one step (a bigger move still sets outright).
   List-tile highlights need `<key>_on` from the DSP (polled every 10 ms, so a tile can light from MIDI alone; `theme_tile_on=`
-  fills the lit tile, `list ... order=pads` numbers the rows from the bottom like a pad bank).
+  fills the lit tile, `list ... order=pads` numbers the rows from the bottom like a pad bank, `order=cols` numbers down each column first so a
+  two-column list reads and steps top to bottom).
   The orange box on a control is the transparent-able Focus ring, not Q-Link bounds. Details: docs/NOTES.md
   "Skin design lessons from the jv880 redesign".
 - AEffect magic `'VstP'` 0x56737450 (the forum PoC's value is wrong).
@@ -141,6 +144,9 @@ Parameter entries feeding `gen_vst.py` (`tools/params.py` format) can carry:
   the PNGs are drawn; off by default, every other port keeps its current look.
 - `scale_names=1` in `layout.conf` makes the knob and toggle names MPC draws follow `label_scale` (21 px × it,
   toggle box grown to fit); without it they stay the fixed 15-17 px / 120 px box every existing skin has.
+- A `readout` or `list` line can style its live text: `tsize=`, `tcolor=`, `tweight=`, `talign=` (left|center|right),
+  `tfont=`, and `tpad=` on readouts (`shadow_skin.live_text`). Readouts are centred and list rows start at the left
+  unless `talign=` says otherwise.
 - A `"display": "string"` param is polled every 10 ms for `<key>_on` (list tiles lit from MIDI) and every 100 ms
   for text changes (readouts refreshed without a tap); `"poll": false` on the param turns that off for one
   whose text only changes on a tap or whose `get_param()` is costly.
@@ -179,6 +185,7 @@ Always `preview` before deploying. Enum `options=` are optional in layouts (they
   thread-CPU timed, verdict PASS/WARN/FAIL against the 2902 µs block (docs/BENCH.md). Nothing installed; MPC keeps running.
 - `tools/release.py`: one shareable zip (the `portable/<skin>/` plugin folder + install.sh/uninstall.sh + generated INSTALL.md + SHA256SUMS); the
   installer stops/restarts MPC, so installing a release on the user's device needs their go-ahead (docs/RELEASING.md).
+- `tools/screenshot.sh <ssh target> out.png [--plugin]`: a screenshot of what the device shows now (read-only DRM grab; NOTES.md).
 - `tools/probe_device.sh` (read-only): arch, CPU, audio workers, plugin formats. VST3 is **not** compiled into MPC OS
   (Force, 2026-09-24): don't build VST3 ports.
 
@@ -187,6 +194,9 @@ Every release must be catalog-conformant: `tools/release.py ... --repo owner/nam
 (CI inputs `plugin_id`, `license`, `requires`), then `tools/catalog_check.py <zip> --catalog` must say OK. A new port also needs
 one `catalog/plugins/<id>.json` PR and public source + licence (docs/PORTING.md section 5, docs/CATALOG.md, catalog/README.md).
 Publish drafts only after a device smoke test, and ask before installing (it restarts MPC).
+
+## Device patches
+`tools/mpc_patch/` holds opt-in scripts that change the device, listed in `catalog/patches.json` (`docs/PATCHES.md`): the 16-pad drum layout, drive exec, and button remap (`hwremap/`, vendored from akai_standalone_remap). They are not part of a plugin release. Do not run one on the user's device without asking.
 
 ## Agent habits (learned the hard way)
 - **GitHub from the CLI:** `gh issue view` can fail with a Projects (classic) GraphQL error; use

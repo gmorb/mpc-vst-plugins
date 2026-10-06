@@ -27,6 +27,9 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
       VST2** (NOTES.md "Native picker (menu overlay): not available to VST2", 2026-09-24) under its real
       component name, not a new option — `popup` stays the way to do a list. Not separately verified.
 ## Porting and tooling
+- [ ] **Catalog: MPC OS 2.x / 3.x compatibility field.** Derived by the release and catalog checks (glibc 2.32 or less, and the skin only uses
+      versions 2.15.1's own skins use); badge and filter on the site, badge and warning in the installer app; developers opt in with the
+      2.x skin shape. Plan and phases: [docs/OS2_SKINS.md](OS2_SKINS.md) ("Proposed direction").
 - [ ] **Q-Link feel on option lists and whole numbers.** A Q-Link event is one step on a Force (docs/NOTES.md "Stepping of option lists
       and whole numbers"), which is quick on a short range; the data wheel is right. Three prototypes of slowing it failed (NOTES). First
       thing to try: how the stock plugins (AIR, Akai) respond to the same Q-Link on a stepped param, by logging what MPC sends them
@@ -43,12 +46,15 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
 - [ ] **Announce to the community** and collect what people ask for before building more.
 
 ## Patches (installer app)
-- [ ] **"Advanced" step for device patches** (`tools/mpc_patch`, and the ForceHD exec patch from #150 if it is shared and reviewed). Plan in
+- [ ] **"Advanced" step for device patches** (`tools/mpc_patch`: the drum-pad layout and drive exec, from #150). Plan in
       `docs/PATCHES.md`: a manifest, the script stays the unit (`status` / `install` / `uninstall`), typed confirmation, staged rollout.
       Built (2026-10-03/04): the script contract (`STATE` line with checksum, `install --confirmed`, restore of an unknown build from a
       verified stock backup), `catalog/patches.json`, and a read-only step 7 in the app. Seen on a Force 2026-10-04: the app's row, the
-      restore and the reinstall (NOTES 2026-10-04). **Still to do:** Apply and Undo from the app (then a Force test), and the ForceHD patch
-      (not yet received or reviewed).
+      restore and the reinstall (NOTES 2026-10-04). The drive exec patch from #150 (run plugins from a `noexec` drive) is built and listed
+      (2026-10-05, offline only, real-mount tests). The button remap (`tools/mpc_patch/hwremap`, from akai_standalone_remap) is built and listed
+      the same day, also offline only: the shim's author had already tried it on an MPC Live (Hakai) and a Force; this installer has not been run on a device.
+      **Still to do:** a Force run of the drive exec patch (install, reboot, a plugin loads, uninstall), a device run of the button-remap installer, and
+      Apply and Undo from the app (then a Force test).
 
 ## Verification
 - [ ] **Stock, unmodded MPC and other models:** the ALSA MIDI-out port (`poc/midiport.c`) without MockbaMod,
@@ -62,7 +68,7 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
       from several authors are listed, and build-yourself ports (Monomodule, Machinemodule) for engines that need your own
       firmware. Phases 0 to 4 of `docs/CATALOG.md` are done apart from the items above.
 - [x] Loads on MPC OS 2.x (2026-10-02): the shared tools and the ports build against glibc 2.31 (`arm32v7/gcc:11-bullseye`; the
-      build-yourself ports use a `debian:bullseye` cross image), and the catalog rejects anything above 2.32. The installers
+      build-yourself ports use a `debian:bullseye` cross image), and the catalog lists anything above 2.32 as MPC OS 3.x only (and rejects above 2.36, 2026-10-05). The installers
       use `acvs`, or `inmusic-mpc` where there is no `acvs`. NOTES 2026-10-01 has the report that led to this.
 - [x] Control looks and images, offline (2026-09-25): built-in looks (knobs moog/chicken/metal/cap, slider fader,
       toggles led/switch), turning knob images with a still base, filmstrip import (knobs, sliders, meters), slider
