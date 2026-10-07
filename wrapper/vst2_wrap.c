@@ -28,6 +28,13 @@
                             * (every 100 ms, see housekeeping) read its "display_rev" and, when it changed, report every
                             * value that moved and ask for an UpdateDisplay (status text, when= panels, meters) */
 #endif
+#ifndef DISPLAY_REV_NO_UPDATE
+#define DISPLAY_REV_NO_UPDATE 0 /* 1 (with HAS_DISPLAY_REV): a changed display_rev only reports the values that moved
+                                 * (audioMasterAutomate), with no UpdateDisplay. MPC answers every UpdateDisplay by re-listing the
+                                 * programs and rebuilding the screen, which closes its PRESET popup ten times a second under live
+                                 * meters; value-driven widgets (picture, meter) still move. Text readouts then redraw only on an
+                                 * UpdateDisplay from elsewhere (a preset pick): show live numbers as pictures. */
+#endif
 #ifndef PARAM_TEXT_MAX
 #define PARAM_TEXT_MAX 24 /* value text length handed to the host, NUL included. The VST2 spec says 8, JUCE's buffer is
                            * bigger; ports that show sentences (status lines) raise it via vst.json "defines" */
@@ -460,7 +467,7 @@ static void housekeeping(AEffect *e, int32_t n) {
         char rev[16];
         if (eng_get(w, "display_rev", rev, sizeof rev) > 0 && strcmp(rev, w->last_rev)) {
             snprintf(w->last_rev, sizeof w->last_rev, "%s", rev);
-            w->need_update_display = 1;
+            if (!DISPLAY_REV_NO_UPDATE) w->need_update_display = 1;
             /* report what the engine changed by itself, so the host moves controls and re-evaluates
              * IndexedEnabling (when= panels), not only text */
             for (int i = 0; i < NPARAMS; i++) {
