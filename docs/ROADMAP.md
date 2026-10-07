@@ -13,7 +13,20 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
 - [ ] **Looks and images on a device.** Built and previewed offline (2026-09-25): check a skin with image knobs,
       an imported filmstrip, image toggles/buttons/segments, a panel picture, a popup list picture and a `picture`
       (one image per option) on a Force.
-- [ ] **Engine-driven live updates need a new wrapper mechanism.** Confirmed on a Force 2026-09-25
+- [ ] **Builder features from other forks (docs/COMMUNITY_SKINS.md "Adoption list", 2026-10-07).** Port from
+      `saustin2010/vst_instruments`' patch to `tools/shadow_skin.py`: `banks=` (controls per Q-Link sub-page),
+      `ns=`/`vs=`/`ink=`/`box=no` text sizes and colours per widget, `bw=` touch width, `lay=side` knobs, `sh=` on
+      segments, sliders and meters as stock filmstrips (frames of their own size, `numFrames` = count, <= 12288 px).
+- [ ] **Skin checker.** A `check_skin.py`-style pass over the built `TUI.json`/`Q-Links.json` (wrong bindings,
+      Q-Links off their page, overlapping touch boxes, boxes past 1280x628, option-count mismatches), run by
+      `tools/test_port.sh`.
+- [ ] **VST programs and wrapper presets.** vst.json `"programs"` / `"presets"` so MPC's PRESET menu lists them
+      (reported working on a Live II by another fork, NOTES 2026-10-07).
+- [ ] **One engine call at a time.** A per-instance recursive mutex around engine calls in `wrapper/vst2_wrap.c`
+      (screen and audio threads both call the engine; NOTES 2026-10-07).
+- [ ] **Engine-driven live updates need a new wrapper mechanism.** (Partly stale: `HAS_DISPLAY_REV` now polls an
+      engine's `display_rev` and refreshes the host, NOTES "display_rev"; another fork measured that repainting
+      costs MPC's screen thread a lot, NOTES 2026-10-07. Re-check what is left before working on this.) Confirmed on a Force 2026-09-25
       (`poc/meterprobe`): `wrapper/vst2_wrap.c` never calls `audioMasterAutomate`/`audioMasterUpdateDisplay`
       for a parameter the DSP engine changes on its own between host-initiated calls (only in response to a
       touch/Q-Link, via `setParameter`'s `need_update_display`) — so a filmstrip `meter` or any other display

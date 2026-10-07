@@ -170,6 +170,19 @@ Parameter entries feeding `gen_vst.py` (`tools/params.py` format) can carry:
   such a plugin, sample real cost live instead: `/proc/<pid>/task/<tid>/stat` deltas against `/proc/uptime`
   while actually playing it on-device.
 
+## Design techniques (from community skins; docs/COMMUNITY_SKINS.md)
+- `"art": "html"` + `art_css` + a full `theme_*` palette; one script-made background `art` per tab with frames and
+  captions baked in; only live parts are widgets. Keep coordinates in one place (script writes or reads the layout).
+- Free-form hit targets (a circle of fifths): one-cell `list` widgets on the background, text from the engine.
+- Displays: rows of `picture` widgets on read-only option params (bar graphs, waveforms); never animate (screen thread
+  cost, NOTES 2026-10-07).
+- App-like screens: stack image `button`s on one spot with `when=<state>:<x>`; badges are image buttons on a no-op key.
+- Type roles: bright for what you read, quiet for names, accent only for live values. Live text is in MPC font
+  heights (~1.52 x CSS px). For per-role sizes the layout can't set, vst.json `"skin_post"` runs a script on TUI.json.
+- Q-Links: one bank of 4 per tab if the target has 4 knobs (MPC Key 37 sub-pages don't cycle); nothing destructive
+  on a Q-Link; `-` slots give each panel its own column; keep watched controls left of x ~1025 (Q-Link sidebar).
+- Ship `tested.json`, a `TESTING.md` (offline + numbered device table) and, for skin rework, a design-QA note.
+
 ## Skin studio (layout design)
 `tools/studio.py`: `auto` (params → first-pass layout.conf), `to-svg` / `from-svg` (Inkscape round trip; tabs are layers,
 controls are labelled groups, Q-Links in layer descriptions), `serve` (browser editor for a layout.conf or a port's
