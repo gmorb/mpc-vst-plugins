@@ -17,6 +17,9 @@ vst.json (paths are relative to the vst.json's folder):
       "effect": true,                            # optional: an audio effect (2 inputs, category Effect); the engine provides process()
       "skin_post": "skin_post.py",               # optional: run as `python3 skin_post.py <skin dir>` after the skin is built, to
                                                  #   adjust TUI.json the layout can't express (e.g. per-role live-text sizes/colours)
+      "presets": "presets.json",                 # optional: the wrapper's own presets, listed in MPC's PRESET menu
+      "programs": {"param": "preset"},           # optional instead: the engine's own preset parameter as that list
+                                                 #   (both: program_lines() below)
       "custom_skin": true,                       # optional: params.h + plugin-list entry only; the port makes the skin itself
       "defines": {"HAS_LFO_BPM": 1},             # optional extra #defines in params.h
                                                  #   (HAS_LFO_BPM: host tempo as "lfo_bpm"; HAS_TRANSPORT: play/stop as "transport")
@@ -158,7 +161,71 @@ def gen_params(cfg, params, out):
     lines += ["#define %s %s" % (k, v) for k, v in cfg.get("defines", {}).items()]
     if cfg.get("effect"):
         lines.append("#define PLUG_EFFECT 1")
+    lines += program_lines(cfg, params, key_to_index)
     open(out, "w").write("\n".join(lines) + "\n")
+
+
+def preset_value(p, v, where):
+    """A preset's value for parameter p, as the string the engine's set_param() gets (what the wrapper itself sends:
+    an option's index, a whole number, or a number in the parameter's own units)."""
+    opts = [str(o) for o in p.get("options") or []]
+    if opts:
+        if isinstance(v, str) and v in opts:
+            return str(opts.index(v))
+        if isinstance(v, str) and v.lower() in [o.lower() for o in opts]:
+            return str([o.lower() for o in opts].index(v.lower()))
+        if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < len(opts):
+            return str(v)
+        raise SystemExit("%s: %s=%r is not one of %s" % (where, p["key"], v, ",".join(opts)))
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise SystemExit("%s: %s=%r is not a number" % (where, p["key"], v))
+    lo, hi = p.get("min", 0), p.get("max", 1)
+    if not lo <= v <= hi:
+        raise SystemExit("%s: %s=%g is outside %g..%g" % (where, p["key"], v, lo, hi))
+    return str(int(round(v))) if p.get("display") == "int" else "%g" % v
+
+
+def program_lines(cfg, params, key_to_index):
+    """VST programs, so MPC's PRESET menu lists them (docs/NOTES.md 2026-10-07):
+       "presets": "presets.json"  -- the wrapper's own presets: {"presets": [{"name": "Init", "values": {key: value}}]}
+                                     (or the bare list); values in the parameter's own units or an option's label
+       "programs": {"param": key} -- the engine's own preset parameter: one program per option (named by the
+                                     option), or per whole number of its range (named by get_param("<key>:<n>") when
+                                     the engine answers, else "<name> <n>")."""
+    if cfg.get("presets") and cfg.get("programs"):
+        raise SystemExit("vst.json: use \"presets\" or \"programs\", not both")
+    if cfg.get("presets"):
+        here = os.path.dirname(os.path.abspath(sys.argv[1]))
+        d = json.load(open(os.path.join(here, cfg["presets"])))
+        presets = d["presets"] if isinstance(d, dict) else d
+        if not presets:
+            raise SystemExit("%s: no presets" % cfg["presets"])
+        out = ["typedef struct { int param; const char *value; } preset_value_t;",
+               "typedef struct { const char *name; int n; const preset_value_t *values; } preset_t;"]
+        rows = []
+        for n, pr in enumerate(presets):
+            where = "%s: preset %r" % (cfg["presets"], pr.get("name", n))
+            vals = []
+            for k, v in pr.get("values", {}).items():   # in file order: the engine may need one set first
+                if k not in key_to_index:
+                    raise SystemExit("%s: %r is not a parameter" % (where, k))
+                vals.append("{%d, %s}" % (key_to_index[k], c_str(preset_value(params[key_to_index[k]], v, where))))
+            if not vals:
+                raise SystemExit("%s: no values" % where)
+            out.append("static const preset_value_t PRESET_%d[] = {%s};" % (n, ", ".join(vals)))
+            rows.append("{%s, %d, PRESET_%d}" % (c_str(str(pr["name"])[:24]), len(vals), n))
+        out += ["static const preset_t PRESETS[] = {%s};" % ", ".join(rows), "#define NPRESETS %d" % len(presets)]
+        return out
+    if cfg.get("programs"):
+        k = cfg["programs"].get("param")
+        if k not in key_to_index:
+            raise SystemExit("vst.json programs: param %r is not a parameter" % k)
+        p = params[key_to_index[k]]
+        n = len(p.get("options") or []) or int(round(p.get("max", 0) - p.get("min", 0))) + 1
+        if n < 2 or not (p.get("options") or p.get("display") == "int"):
+            raise SystemExit("vst.json programs: %r must be an option list or a \"display\": \"int\" range" % k)
+        return ["#define PROG_PARAM %d" % key_to_index[k], "#define NPROGRAMS %d" % min(n, 1024)]
+    return []
 
 
 def entry(cfg):

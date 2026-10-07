@@ -174,6 +174,11 @@ Parameter entries feeding `gen_vst.py` (`tools/params.py` format) can carry:
   such a plugin, sample real cost live instead: `/proc/<pid>/task/<tid>/stat` deltas against `/proc/uptime`
   while actually playing it on-device.
 
+## Presets (MPC's PRESET menu)
+vst.json `"presets": "presets.json"` (the wrapper's own list) or `"programs": {"param": "<key>"}` (the engine's preset
+param) makes the plugin report VST programs; MPC lists them in the plugin header's PRESET menu. Details: docs/PORTING.md.
+The host test checks names, picking and the host redraw. A re-pick of the current program is ignored (JUCE does it at load).
+
 ## Design techniques (from community skins; docs/COMMUNITY_SKINS.md)
 - `"art": "html"` + `art_css` + a full `theme_*` palette; one script-made background `art` per tab with frames and
   captions baked in; only live parts are widgets. Keep coordinates in one place (script writes or reads the layout).

@@ -97,7 +97,8 @@ typedef struct {
 enum {
     effOpen = 0, effClose = 1, effGetParamLabel = 6, effGetParamDisplay = 7, effGetParamName = 8,
     effSetSampleRate = 10, effSetBlockSize = 11, effMainsChanged = 12, effGetChunk = 23,
-    effSetChunk = 24, effProcessEvents = 25, effCanBeAutomated = 26, effGetPlugCategory = 35,
+    effSetChunk = 24, effSetProgram = 2, effGetProgram = 3, effGetProgramName = 5,
+    effGetProgramNameIndexed = 29, effProcessEvents = 25, effCanBeAutomated = 26, effGetPlugCategory = 35,
     effGetEffectName = 45, effGetVendorString = 47, effGetProductString = 48,
     effGetVendorVersion = 49, effCanDo = 51, effGetVstVersion = 58,
 };
@@ -129,6 +130,7 @@ typedef struct {
     float last_norm[NPARAMS];   /* HAS_DISPLAY_REV: value last reported per param (-1 = never) */
     float open[NPARAMS];     /* popup "open" flags (popup.h): kept here, never sent to the DSP or saved */
     char chunk[8192];
+    int program;             /* NPRESETS: the preset last picked (not in the engine's state; 0 after a reload) */
 #if SAMPLE_ACCURATE
     struct { int32_t frame; uint8_t msg[3]; } evq[WRAP_EVQ];   /* this block's MIDI, sorted by frame (see queue_midi) */
     int nev;
@@ -499,6 +501,65 @@ static void copy_str(void *dst, const char *src, size_t max) {
     ((char *)dst)[max - 1] = 0;
 }
 
+/* ---- VST programs: MPC's PRESET menu lists them by name and loads one with effSetProgram (docs/NOTES.md) ----
+ * NPRESETS: the port's presets.json, compiled into params.h by gen_vst.py; picking one sets each listed parameter in
+ * file order, as a touch would, and has the host redraw them. PROG_PARAM: the engine's own preset parameter; a
+ * program is one of its options (or whole numbers), so the current one is whatever the engine reports. */
+#if defined(NPRESETS)
+#define NUM_PROGRAMS NPRESETS
+#elif defined(PROG_PARAM)
+#define NUM_PROGRAMS NPROGRAMS
+#else
+#define NUM_PROGRAMS 0
+#endif
+
+static int get_program(wrap_t *w) {
+#if defined(PROG_PARAM)
+    const param_t *pp = &PARAMS[PROG_PARAM];
+    float span = pp->nopts > 1 ? pp->nopts - 1 : pp->max - pp->min;
+    return (int)lroundf(get_norm(w, PROG_PARAM) * span);
+#else
+    return w->program;
+#endif
+}
+
+static void set_program(wrap_t *w, int idx) {
+    if (idx < 0 || idx >= NUM_PROGRAMS || idx == get_program(w)) return;   /* a host re-selecting the current one
+                                                                              * (JUCE does at load) keeps any edits */
+#if defined(NPRESETS)
+    for (int i = 0; i < PRESETS[idx].n; i++) {
+        g_api->set_param(w->dsp, PARAMS[PRESETS[idx].values[i].param].key, PRESETS[idx].values[i].value);
+        w->changed[PRESETS[idx].values[i].param] = 1;   /* reported to the host from housekeeping() */
+    }
+    w->program = idx;
+#elif defined(PROG_PARAM)
+    char buf[32];
+    const param_t *pp = &PARAMS[PROG_PARAM];
+    snprintf(buf, sizeof buf, "%d", pp->nopts > 1 ? idx : (int)lroundf(pp->min) + idx);
+    g_api->set_param(w->dsp, pp->key, buf);
+    for (int i = 0; i < NPARAMS; i++) w->changed[i] = !popup_is(i);   /* a preset may change anything */
+#endif
+    w->need_update_display = 1;
+}
+
+static void program_name(wrap_t *w, int idx, char *out) {
+    out[0] = 0;
+    if (idx < 0 || idx >= NUM_PROGRAMS) return;
+#if defined(NPRESETS)
+    (void)w;
+    copy_str(out, PRESETS[idx].name, 24);
+#elif defined(PROG_PARAM)
+    char k2[96], buf[64];
+    const param_t *pp = &PARAMS[PROG_PARAM];
+    if (pp->nopts > 1) { copy_str(out, pp->opts[idx], 24); return; }
+    snprintf(k2, sizeof k2, "%s:%d", pp->key, (int)lroundf(pp->min) + idx);   /* the engine names it without loading it */
+    if (g_api->get_param(w->dsp, k2, buf, sizeof buf) > 0) copy_str(out, buf, 24);
+    else snprintf(out, 24, "%s %d", pp->name, (int)lroundf(pp->min) + idx);
+#else
+    (void)w;
+#endif
+}
+
 static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void *p, float o) {
     wrap_t *w = e->object;
     (void)o;
@@ -566,6 +627,10 @@ static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void
             }
         return 1;
     }
+    case effSetProgram: set_program(w, (int)v); return 1;
+    case effGetProgram: return NUM_PROGRAMS ? get_program(w) : 0;
+    case effGetProgramName: program_name(w, NUM_PROGRAMS ? get_program(w) : -1, p); return 1;
+    case effGetProgramNameIndexed: program_name(w, idx, p); return idx >= 0 && idx < NUM_PROGRAMS;
     case effCanDo:
         return (!strcmp(p, "receiveVstEvents") || !strcmp(p, "receiveVstMidiEvent") ||
                 !strcmp(p, "receiveVstTimeInfo")) ? 1 : -1;
@@ -615,6 +680,7 @@ __attribute__((visibility("default"))) AEffect *VSTPluginMain(audioMasterCallbac
     e->getParameter = getParameter;
     e->processReplacing = processReplacing;
     e->numParams = NPARAMS;
+    e->numPrograms = NUM_PROGRAMS;
 #ifdef PLUG_EFFECT
     e->numInputs = 2;
     e->numOutputs = 2;

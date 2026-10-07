@@ -19,8 +19,9 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
       <= 12288 px) done 2026-10-07. Still to do: `lay=side` knobs, `ns=0`/`bw=` on toggles, `sh=` on segments.
 - [ ] **Skin checker: the rest.** `tools/skin_check.py` (2026-10-07) covers TOUCH / EDGE / QLINK and runs in
       `gen_vst.py`; still to add: Q-Links out of the layout's order, option-count mismatches in the built skin.
-- [ ] **VST programs and wrapper presets.** vst.json `"programs"` / `"presets"` so MPC's PRESET menu lists them
-      (reported working on a Live II by another fork, NOTES 2026-10-07).
+- [ ] **VST programs and wrapper presets: device check.** vst.json `"programs"` / `"presets"` are in (2026-10-07, offline,
+      host-tested); confirm on a device that MPC's PRESET menu lists and loads them. Not yet: programs whose count
+      changes at run time (user banks) or names stepped from an engine that can't name a preset without loading it.
 - [ ] **One engine call at a time.** A per-instance recursive mutex around engine calls in `wrapper/vst2_wrap.c`
       (screen and audio threads both call the engine; NOTES 2026-10-07).
 - [ ] **Engine-driven live updates need a new wrapper mechanism.** (Partly stale: `HAS_DISPLAY_REV` now polls an

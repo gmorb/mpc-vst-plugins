@@ -117,6 +117,11 @@ for the pattern). This applies to every future port, not just ones that hit the 
 - [ ] Instruments-browser tile: `"tile": "art/tile.png"` (270x110 PNG) in vst.json puts the artwork tile in the Sounds >
       INSTRUMENTS browser and ships a Default preset so the tile opens the plugin (`tools/xpl.py`; NOTES.md
       "Instruments-browser tiles"). Without it the plugin is a folder tile in the browser.
+- [ ] Presets in MPC's PRESET menu (2026-10-07, offline; device check pending): an engine with its own preset parameter
+      sets vst.json `"programs": {"param": "<key>"}` (an option list, or a `"display": "int"` range whose names the engine
+      gives as `get_param("<key>:<n>")`); one without sets `"presets": "presets.json"` (`{"presets": [{"name", "values":
+      {key: value}}]}`, values in each parameter's units or an option's label; gen_vst.py checks them). Set every
+      parameter in every preset, in the order the engine needs, and make the first one the plugin's default sound.
 - [ ] Skin touch-ups the layout can't express (per-role live-text sizes/colours in `TUI.json`): a script named by
       vst.json `"skin_post"`, run on the built skin folder; make it fail when its targets are missing. Design ideas from
       other ports: `docs/COMMUNITY_SKINS.md`.

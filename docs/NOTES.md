@@ -1210,3 +1210,16 @@ needs a check on our devices before it becomes a rule. Survey of the techniques:
   (GETPLANE, GETFB, MAP_DUMB). The card number changed between boots (card0, then card1). Cf. `tools/drmgrab.c`.
 - **ALSA mirror ports.** MPC adds its own copy ("<client> <port>") of each new sequencer port on its client, which has
   a lower number, so a substring search by port name finds MPC's copy first. Match exactly, or by pid.
+
+## 2026-10-07: VST programs from the wrapper (offline; device check pending)
+`wrapper/vst2_wrap.c` now reports VST programs (`numPrograms`, `effSetProgram`/`effGetProgram`, `effGetProgramName`,
+`effGetProgramNameIndexed`) when vst.json has `"presets"` (a `presets.json` compiled into `params.h` by gen_vst.py) or
+`"programs": {"param": key}` (an engine preset parameter: one program per option or whole number). Another fork saw
+MPC's PRESET menu list and load such programs on a Live II ("reported by other forks" above). Behaviour, host-tested
+(`tools/host_test.c` program checks, ASan) on `poc/steptest` variants:
+- Picking a preset sets each listed parameter through the engine's `set_param`, in file order, and reports each one to
+  the host from `housekeeping()` (never from inside the host's call), plus `audioMasterUpdateDisplay`.
+- Picking the program that is already current does nothing, so a host re-selecting program 0 at load can't overwrite
+  a restored chunk. The picked preset index isn't in the engine's state: after a project reload the menu shows the
+  first preset's name (the sound is restored from the chunk as before).
+- `"programs"` on a `"display": "int"` param names program n by `get_param("<key>:<n>")`, else "<Name> <n>".

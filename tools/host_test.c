@@ -5,6 +5,7 @@
  * HAS_TRANSPORT, play/stop/jump-back (poc/steptest). Exit 1 on failure. */
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include "params.h"
@@ -172,6 +173,36 @@ static void step_of_option_tests(AEffect *a) {
           PARAMS[prev].key, PARAMS[t].key, a->getP(a, t));
 }
 
+/* VST programs (vst.json "presets" / "programs"): every program has a name, picking one moves the engine there, the
+ * plugin reports the new current program, and the parameters it set are reported back to the host (housekeeping). */
+static void program_tests(AEffect *a) {
+#if defined(NPRESETS) || defined(PROG_PARAM)
+    char name[64];
+    CHECK(a->np >= 1, "%d programs", a->np);
+    for (int k = 0; k < a->np; k++) {
+        name[0] = 0;
+        CHECK(a->d(a, 29, k, 0, name, 0) == 1 && name[0], "program %d is named \"%s\"", k, name);
+    }
+    int pick = a->np - 1;
+    memset(automated, 0, sizeof automated);
+    a->d(a, 2, 0, pick, 0, 0);
+    run(a, 1);
+    CHECK(a->d(a, 3, 0, 0, 0, 0) == pick, "program %d is current after picking it", pick);
+#if defined(NPRESETS)
+    for (int i = 0; i < PRESETS[pick].n; i++) {
+        const param_t *p = &PARAMS[PRESETS[pick].values[i].param];
+        float want = p->nopts > 1 ? atof(PRESETS[pick].values[i].value) / (p->nopts - 1)
+                                  : (atof(PRESETS[pick].values[i].value) - p->min) / (p->max - p->min);
+        float got = a->getP(a, PRESETS[pick].values[i].param);
+        CHECK(fabsf(got - want) < 1e-3f, "preset \"%s\" sets %s (%g, want %g)", PRESETS[pick].name, p->key, got, want);
+        CHECK(automated[PRESETS[pick].values[i].param] > 0, "preset change of %s reported to the host", p->key);
+    }
+#endif
+#else
+    CHECK(a->np == 0, "no programs without vst.json presets/programs");
+#endif
+}
+
 int main(void) {
     AEffect *a = VSTPluginMain(host), *b = VSTPluginMain(host);
     CHECK(a && b && a != b, "two instances");
@@ -326,6 +357,7 @@ int main(void) {
         if (pop >= 0) CHECK(!strstr((char *)ch, PARAMS[pop].key), "popup flag not saved in the chunk");
     } else printf("warn no chunk (engine has no \"state\" param)\n");
 
+    program_tests(a);
     a->d(a, 1, 0, 0, 0, 0); b->d(b, 1, 0, 0, 0, 0);
     printf("%s\n", fails ? "FAILED" : "PASSED");
     return fails ? 1 : 0;
