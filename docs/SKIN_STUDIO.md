@@ -194,6 +194,13 @@ MPC reads two maps from the skin's `Q-Links.json`:
   those `qlinks` pages of its tab, so each sub-page can show and touch-edit what its Q-Links turn (a step sequencer's
   PITCH / GATE lanes in the same cells). Baked parts get their own image on those sub-pages. Not yet seen on a device.
 
+## Built-skin check (2026-10-07)
+`tools/skin_check.py "<plugin folder>"` reads the built `TUI.json`/`Q-Links.json` and reports, per page: TOUCH (two
+controls' touch boxes overlap while both show: MPC gives the touch to one), EDGE (a box past 1280x628) and QLINK (a
+Q-Link on a parameter no control on that page shows). `gen_vst.py` runs it after every skin build and prints the
+findings as `warning: skin:` lines. It complements the browser editor's layout checks, and sees what the builder made
+(label widths, `when=` modes, `banks=` sub-pages).
+
 ## Text size and touch width per control (2026-10-07, offline)
 `knob` and `slider_v`/`slider_h` take `ns=<px>` (name text; `ns=0` drops the name), `vs=<px>` (value text) and
 `bw=<px>` (touch box and text width; default 130). Narrow `bw=` where neighbours sit closer than ~130 px, or MPC gives

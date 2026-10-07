@@ -17,9 +17,8 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
       `saustin2010/vst_instruments`' patch to `tools/shadow_skin.py`. Done offline 2026-10-07 (device check pending):
       `banks=`, `ns=`/`vs=`/`bw=` on knobs and sliders. Sliders and meters as stock filmstrips (frames of their own size, `numFrames` = count,
       <= 12288 px) done 2026-10-07. Still to do: `lay=side` knobs, `ns=0`/`bw=` on toggles, `sh=` on segments.
-- [ ] **Skin checker.** A `check_skin.py`-style pass over the built `TUI.json`/`Q-Links.json` (wrong bindings,
-      Q-Links off their page, overlapping touch boxes, boxes past 1280x628, option-count mismatches), run by
-      `tools/test_port.sh`.
+- [ ] **Skin checker: the rest.** `tools/skin_check.py` (2026-10-07) covers TOUCH / EDGE / QLINK and runs in
+      `gen_vst.py`; still to add: Q-Links out of the layout's order, option-count mismatches in the built skin.
 - [ ] **VST programs and wrapper presets.** vst.json `"programs"` / `"presets"` so MPC's PRESET menu lists them
       (reported working on a Live II by another fork, NOTES 2026-10-07).
 - [ ] **One engine call at a time.** A per-instance recursive mutex around engine calls in `wrapper/vst2_wrap.c`

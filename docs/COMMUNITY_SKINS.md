@@ -68,8 +68,8 @@ as `layout.grid.conf`. This is the same idea as `studio.py from-svg`, from HTML 
 - **`check_skin.py` (vst_instruments `dev-tools/stitch/`):** reads the built `TUI.json`/`Q-Links.json` and reports
   BIND (control bound to the wrong parameter), QLINK (Q-Link off its page, out of order, more than 16), TOUCH
   (overlapping touch boxes: MPC gives the touch to one), EDGE (box past 1280x628), OPTS (option count mismatch).
-  `qlink_overlay.py` draws the Q-Link outlines over a preview to check they don't overlap. This repo has
-  `skin_compat.py` (OS 2.x/3.x shape) but no binding/touch/edge checker.
+  `qlink_overlay.py` draws the Q-Link outlines over a preview to check they don't overlap. This repo now has
+  `tools/skin_check.py` (TOUCH/EDGE/QLINK, 2026-10-07) besides `skin_compat.py` (OS 2.x/3.x shape).
 - **`showcase.py`:** README screenshots rendered with the engine's real values.
 - **`tested.json`** (Keyscope, Plaits, Manager, Liminal): device, firmware, date per version; this repo's catalog
   already reads it (`docs/CATALOG.md`).
@@ -96,7 +96,8 @@ Builder (`tools/shadow_skin.py`), all in the vst_instruments patch and so alread
 4. Sliders and display meters laid out as stock filmstrips (frames of the widget's own size, `numFrames` = count,
    strips under 12288 px). **Done 2026-10-07 (offline).**
 5. `sh=` on `enum_h`/`enum_v`.
-6. A skin checker like `check_skin.py` (BIND/QLINK/TOUCH/EDGE/OPTS), run by `test_port.sh`.
+6. A skin checker like `check_skin.py` (BIND/QLINK/TOUCH/EDGE/OPTS). **TOUCH/EDGE/QLINK done 2026-10-07**
+   (`tools/skin_check.py`, run by `gen_vst.py`).
 
 Wrapper and gen_vst: `"programs"` / `"presets"` (MPC's PRESET menu), a per-instance engine-call mutex, MIDI CC
 20-35 to the first page's Q-Links and NRPN to any parameter, option `values`/`send`.

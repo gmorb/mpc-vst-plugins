@@ -200,6 +200,40 @@ class StockStrips(unittest.TestCase):
         self.assertEqual(strip["bounds"]["bounds"].split()[2:], ["40", "200"])
 
 
+class SkinCheck(unittest.TestCase):
+    """tools/skin_check.py on a stub-built skin: overlapping touch boxes, boxes past the edge, stray Q-Links."""
+    PARAMS = [{"key": k, "name": k.upper(), "min": 0, "max": 1} for k in "abcd"]
+
+    def findings(self, layout):
+        import json
+        import skin_check
+        d = tempfile.mkdtemp()
+        lp, art = os.path.join(d, "layout.conf"), os.path.join(d, "art.sh")
+        open(lp, "w").write(layout)
+        open(art, "w").write("#!/bin/sh\ncat >/dev/null\n")
+        os.chmod(art, 0o755)
+        comps, tabs, qmap = shadow_skin.build(lp, self.PARAMS, d, art, lambda a, b: None)
+        json.dump({"pageData": {"componentDefinitions": {"localComponentDefinitions": comps}, "tabs": tabs}},
+                  open(os.path.join(d, "TUI.json"), "w"))
+        json.dump({"Screen Mode Q-Links": {"map": qmap}}, open(os.path.join(d, "Q-Links.json"), "w"))
+        return [f.split()[1] for f in skin_check.check(d)]
+
+    def tearDown(self):
+        shadow_skin.apply_theme([])
+
+    def test_a_clean_page_has_no_findings(self):
+        self.assertEqual(self.findings("[tab T]\nknob cx=200 cy=300 r=30 key=a\nknob cx=400 cy=300 r=30 key=b\n"), [])
+
+    def test_each_problem_is_found(self):
+        f = self.findings('[tab T]\nknob cx=200 cy=300 r=30 key=a\nknob cx=260 cy=300 r=30 key=b\n'
+                          'knob cx=1260 cy=300 r=30 key=c\nknob cx=600 cy=300 r=30 key=d banks="ONE"\n'
+                          'qlinks "ONE" = a,b,c,d\nqlinks "TWO" = a,b,c,d\n')
+        self.assertEqual(sorted(f), ["EDGE", "EDGE", "QLINK", "TOUCH", "TOUCH"])
+
+    def test_narrow_bw_clears_the_overlap(self):
+        self.assertEqual(self.findings("[tab T]\nknob cx=200 cy=300 r=30 key=a bw=74\nknob cx=280 cy=300 r=30 key=b bw=74\n"), [])
+
+
 def _gen_like_tui():
     """A TUI.json shaped like write_skin's output (MPC OS 3.x): one tab pointing at a local page definition, one
     widget definition holding a Knob and a Button, version 4 definitions, tab 3, Knob 5, Button 2."""

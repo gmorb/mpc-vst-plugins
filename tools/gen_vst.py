@@ -218,6 +218,9 @@ def main():
                                            else os.path.join(build, "shadow_art"))
     skin = shadow_skin.write_skin(os.path.join(build, "skin"), cfg["vendor"], cfg["name"], layout, plist, art)
     print("skin:", skin)
+    import skin_check   # overlapping touch boxes, boxes off the screen, Q-Links on unseen parameters
+    for f in skin_check.check(skin):
+        sys.stderr.write("warning: skin: %s\n" % f)
     if cfg.get("skin_post"):   # the port's own TUI.json touch-ups; a non-zero exit fails the build
         import subprocess
         subprocess.run([sys.executable, os.path.join(here, cfg["skin_post"]), skin], cwd=here, check=True)

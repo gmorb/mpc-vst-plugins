@@ -111,6 +111,8 @@ force-acid: theme-less first pass looked "plausible" until checked against the s
 look -- yellow chassis, red buttons, dark knobs -- see mpc-vst/docs/NOTES.md). No shadow page to copy
 from: pick theme colours on purpose instead of leaving the default.
 
+`gen_vst.py` runs `tools/skin_check.py` on every built skin: `warning: skin:` lines name overlapping touch boxes (TOUCH:
+narrow with `bw=` or move), boxes past 1280x628 (EDGE) and Q-Links on parameters the page doesn't show (QLINK). Fix them.
 Check offline before deploying: composite TUI.json + PNGs into a preview image (`tools/studio.py preview`)
 and look at it -- and if the app has a real screenshot/mockup (its `docs/*.png`, or its own shadow
 page's look), compare against *that*, not just "does this look like a plausible skin". Skin-only changes
