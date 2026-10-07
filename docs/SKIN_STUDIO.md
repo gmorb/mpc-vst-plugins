@@ -197,7 +197,7 @@ MPC reads two maps from the skin's `Q-Links.json`:
 ## Built-skin check (2026-10-07)
 `tools/skin_check.py "<plugin folder>"` reads the built `TUI.json`/`Q-Links.json` and reports, per page: TOUCH (two
 controls' touch boxes overlap while both show: MPC gives the touch to one), EDGE (a box past 1280x628) and QLINK (a
-Q-Link on a parameter no control on that page shows). `gen_vst.py` runs it after every skin build and prints the
+Q-Link on a parameter no control on that page shows) and OPTS (a switch group missing some of its options). `gen_vst.py` runs it after every skin build and prints the
 findings as `warning: skin:` lines. It complements the browser editor's layout checks, and sees what the builder made
 (label widths, `when=` modes, `banks=` sub-pages).
 

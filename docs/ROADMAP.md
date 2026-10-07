@@ -19,7 +19,8 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
       <= 12288 px) done 2026-10-07. `lay=side` knobs, `ns=0`/`bw=` on toggles and `sh=` on enum_v
       followed the same day. All offline; check on a device.
 - [ ] **Skin checker: the rest.** `tools/skin_check.py` (2026-10-07) covers TOUCH / EDGE / QLINK and runs in
-      `gen_vst.py`; still to add: Q-Links out of the layout's order, option-count mismatches in the built skin.
+      `gen_vst.py`; OPTS (incomplete switch groups) added the same day. Still to add: Q-Links out of the layout's order
+      (needs the layout next to the skin).
 - [ ] **VST programs and wrapper presets: device check.** vst.json `"programs"` / `"presets"` are in (2026-10-07, offline,
       host-tested); confirm on a device that MPC's PRESET menu lists and loads them. Not yet: programs whose count
       changes at run time (user banks) or names stepped from an engine that can't name a preset without loading it.

@@ -251,6 +251,10 @@ class SkinCheck(unittest.TestCase):
                           'qlinks "ONE" = a,b,c,d\nqlinks "TWO" = a,b,c,d\n')
         self.assertEqual(sorted(f), ["EDGE", "EDGE", "QLINK", "TOUCH", "TOUCH"])
 
+    def test_option_segments_are_complete(self):
+        self.PARAMS = [{"key": "a", "name": "A", "options": ["X", "Y", "Z"]}]
+        self.assertEqual(self.findings("[tab T]\nenum_h cx=400 cy=300 key=a\n"), [])
+
     def test_narrow_bw_clears_the_overlap(self):
         self.assertEqual(self.findings("[tab T]\nknob cx=200 cy=300 r=30 key=a bw=74\nknob cx=280 cy=300 r=30 key=b bw=74\n"), [])
 
