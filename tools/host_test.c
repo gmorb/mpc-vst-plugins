@@ -378,6 +378,13 @@ int main(void) {
         CHECK(a->getP(a, pop) > 0.5f && !automated[pop], "Q-Link nudge leaves it open");
         a->setP(a, t, 1.0f); run(a, 1);
         CHECK(a->getP(a, pop) < 0.5f && automated[pop] == 1, "a pick closes it and tells the host once");
+        int pop2 = -1;
+        for (int i = pop + 1; i < NPARAMS && pop2 < 0; i++) if (PARAMS[i].popup_of >= 0) pop2 = i;
+        if (pop2 >= 0) {
+            a->setP(a, pop, 1); a->setP(a, pop2, 1); run(a, 1);
+            CHECK(a->getP(a, pop2) > 0.5f && a->getP(a, pop) < 0.5f, "opening a second popup closes the first (%s, %s)", PARAMS[pop].key, PARAMS[pop2].key);
+            a->setP(a, pop2, 0); run(a, 1);
+        }
     }
 
     ME m = {1, sizeof(ME), 0, 0, 0, 0, {0x90, 60, 100, 0}}; EV ev = {1, 0, {&m, 0}};

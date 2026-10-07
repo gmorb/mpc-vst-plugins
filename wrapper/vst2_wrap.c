@@ -232,7 +232,10 @@ static void setParameter(AEffect *e, int32_t i, float n) {
     if (i < 0 || i >= NPARAMS) return;
     const param_t *p = &PARAMS[i];
     int nudge = 0;
-    if (popup_set(w->open, i, n)) return;
+    if (popup_set(w->open, i, n)) {
+        if (w->open[i] > 0.5f) popup_close_others(w->open, w->holdFrames, i);   /* one list at a time */
+        return;
+    }
     if (p->step_target >= 0) {
         /* A momentary nudge of ANOTHER param (see gen_vst.py's step_of/step_delta comment). Reads
          * the target's CURRENT value straight from the DSP, not our own cached norm, so it's
