@@ -96,10 +96,11 @@ Builder (`tools/shadow_skin.py`), all in the vst_instruments patch and so alread
 4. Sliders and display meters laid out as stock filmstrips (frames of the widget's own size, `numFrames` = count,
    strips under 12288 px). **Done 2026-10-07 (offline).**
 5. `sh=` on `enum_h`/`enum_v`. **Done** (enum_h had it; enum_v 2026-10-07).
-6. A skin checker like `check_skin.py` (BIND/QLINK/TOUCH/EDGE/OPTS). **TOUCH/EDGE/QLINK done 2026-10-07**
-   (`tools/skin_check.py`, run by `gen_vst.py`).
+6. A skin checker like `check_skin.py` (BIND/QLINK/TOUCH/EDGE/OPTS). **TOUCH/EDGE/QLINK/OPTS done 2026-10-07**
+   (`tools/skin_check.py`, run by `gen_vst.py`); Q-Link order against the layout is not checked.
 
-Wrapper and gen_vst: `"programs"` / `"presets"` (MPC's PRESET menu), a per-instance engine-call mutex, MIDI CC
-20-35 to the first page's Q-Links and NRPN to any parameter, option `values`/`send`.
+Wrapper and gen_vst: `"programs"` / `"presets"` (MPC's PRESET menu; lists and loads on a Force), a per-instance
+engine-call mutex, MIDI CC 20-35 to the first page's Q-Links and NRPN to any parameter: **all done 2026-10-07**
+(the mutex and MIDI control offline only). Not taken: option `values`/`send`.
 
 Docs and skill: the techniques above (done in the skill's "Design techniques"), Design QA + TESTING.md templates.

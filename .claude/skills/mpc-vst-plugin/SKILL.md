@@ -176,7 +176,8 @@ Parameter entries feeding `gen_vst.py` (`tools/params.py` format) can carry:
 
 ## Presets (MPC's PRESET menu)
 vst.json `"presets": "presets.json"` (the wrapper's own list) or `"programs": {"param": "<key>"}` (the engine's preset
-param) makes the plugin report VST programs; MPC lists them in the plugin header's PRESET menu. Details: docs/PORTING.md.
+param) makes the plugin report VST programs; MPC lists them in the plugin header's PRESET menu (seen loading on a Force,
+2026-10-07). Details: docs/PORTING.md.
 The host test checks names, picking and the host redraw. A re-pick of the current program is ignored (JUCE does it at load).
 
 ## MIDI control and the engine lock
