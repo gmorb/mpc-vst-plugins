@@ -15,6 +15,8 @@ vst.json (paths are relative to the vst.json's folder):
       "art": "html",                             # optional: draw the skin artwork in a browser (tools/html_art.py)
       "tile": "art/tile.png",                    # optional: 270x110 Instruments-browser tile (+ a Default preset; tools/xpl.py)
       "effect": true,                            # optional: an audio effect (2 inputs, category Effect); the engine provides process()
+      "skin_post": "skin_post.py",               # optional: run as `python3 skin_post.py <skin dir>` after the skin is built, to
+                                                 #   adjust TUI.json the layout can't express (e.g. per-role live-text sizes/colours)
       "custom_skin": true,                       # optional: params.h + plugin-list entry only; the port makes the skin itself
       "defines": {"HAS_LFO_BPM": 1},             # optional extra #defines in params.h
                                                  #   (HAS_LFO_BPM: host tempo as "lfo_bpm"; HAS_TRANSPORT: play/stop as "transport")
@@ -216,6 +218,12 @@ def main():
                                            else os.path.join(build, "shadow_art"))
     skin = shadow_skin.write_skin(os.path.join(build, "skin"), cfg["vendor"], cfg["name"], layout, plist, art)
     print("skin:", skin)
+    import skin_check   # overlapping touch boxes, boxes off the screen, Q-Links on unseen parameters
+    for f in skin_check.check(skin):
+        sys.stderr.write("warning: skin: %s\n" % f)
+    if cfg.get("skin_post"):   # the port's own TUI.json touch-ups; a non-zero exit fails the build
+        import subprocess
+        subprocess.run([sys.executable, os.path.join(here, cfg["skin_post"]), skin], cwd=here, check=True)
     if cfg.get("tile"):   # the browser tile only does something with a preset to open: ship a Default one with it
         import xpl
         print("tile:", xpl.write_tile(os.path.join(here, cfg["tile"]), skin))
