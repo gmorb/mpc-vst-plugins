@@ -11,6 +11,7 @@
   bridge work on the engine side. The DX7 port hit this and switched to an in-process build of the same engine.
 - A port can live in its own repo next to a checkout of this one (`MPC_VST`), as mpc-vst-maze/-dx7/-acid do.
 - **MIDI generator** (sequencer/arp): MPC ignores VST MIDI out, so send through an ALSA seq port (`poc/midiport.c`).
+  Place steps from the host song position, not by counting MIDI clock pulses you synthesized: `docs/MIDI_TIMING.md`.
 - **App** (network, files, child processes): allowed, see NOTES "Beyond synths". Keep the audio thread
   non-blocking, use `posix_spawn` with LD_PRELOAD stripped (never `fork()`), and use libcurl for HTTPS.
 
