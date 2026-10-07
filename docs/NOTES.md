@@ -1199,13 +1199,14 @@ needs a check on our devices before it becomes a rule. Survey of the techniques:
 - **The Q-Link sidebar covers x >= ~1025.** Touching a Q-Link slides MPC's panel over the right ~255 px of the page;
   keep controls you watch while turning out of that strip.
 - **MPC's PRESET menu lists VST programs** (`numPrograms`, `effGetProgramNameIndexed`, `effSetProgram`): their wrapper
-  maps an engine preset parameter (vst.json `"programs"`) or a `presets.json` to programs. Not in this repo yet.
+  maps an engine preset parameter (vst.json `"programs"`) or a `presets.json` to programs. In this repo since 2026-10-07 (section "VST programs from the wrapper" below).
 - **Plugin menu.** Sorted by type, VST plugins land in one VST folder (instruments, or effects with two inputs); the
   plugin-list `category` moves nothing. Sorted by manufacturer, each manufacturer is a folder. Names sort
   case-sensitively (digits, capitals, lower case).
 - **Two-thread engine calls.** The JUCE host sets/reads parameters on its message thread while audio runs on another;
   an engine that assumes one caller can crash (Noisemaker's voice-count change). Their wrapper holds a recursive,
-  priority-inheriting mutex per instance around every engine call. Not in this repo yet.
+  priority-inheriting mutex per instance around every engine call. In this repo since 2026-10-07 (section "one engine
+  call at a time" below).
 - **Screen grabs.** `/dev/fb0` is black (MPC draws through a DRM plane); map the scanout buffer from `/dev/dri/cardN`
   (GETPLANE, GETFB, MAP_DUMB). The card number changed between boots (card0, then card1). Cf. `tools/drmgrab.c`.
 - **ALSA mirror ports.** MPC adds its own copy ("<client> <port>") of each new sequencer port on its client, which has
