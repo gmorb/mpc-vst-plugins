@@ -28,6 +28,7 @@ vst.json (paths are relative to the vst.json's folder):
                                                  #   (HAS_DISPLAY_REV: the DSP changes values by itself; the wrapper polls its "display_rev" and
                                                  #   refreshes the host; PARAM_TEXT_MAX: readout length, default 24 -- see wrapper/vst2_wrap.c)
       "build": {"root": "..", "sources": ["src/engine.c"], "cflags": ["-Isrc"], "libs": ["-lm"]}
+                                                 #   "cflags_arm": [..] -- extra flags for the armhf device build only (not the x86 host test), e.g. ["-mfpu=neon"]
     }
 The sources provide mpc_engine() (wrapper/engine.h). An engine from another ecosystem names its own
 parameter source instead of "params" and gets its adapter linked in (adapters/<name>/README.md).
@@ -277,6 +278,7 @@ def main():
         root = os.path.normpath(os.path.join(here, b.get("root", ".")))
         for k, v in (("ROOT", root), ("PORT", os.path.relpath(here, root)), ("SO", cfg["so"]),
                      ("SOURCES", " ".join(b.get("sources", []))), ("CFLAGS", " ".join(b.get("cflags", []))),
+                     ("CFLAGS_ARM", " ".join(b.get("cflags_arm", []))),
                      ("LIBS", " ".join(b.get("libs", ["-lm"]))),
                      ("LAYOUT", "1" if cfg.get("layout") else ""),
                      ("TITLE_FONT", cfg.get("title_font", "")),

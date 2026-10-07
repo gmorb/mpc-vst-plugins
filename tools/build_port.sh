@@ -58,7 +58,7 @@ case "$SOURCES" in
 esac
 if [ "$CXXPORT" = 0 ]; then
   docker run --rm --platform linux/arm/v7 -u "$U" -v "$ROOT":/b -v "$MV":/mv:ro -w /b arm32v7/gcc:11-bullseye bash -euc "
-    gcc -O2 -Wall -Wextra -Wno-unused-parameter -fPIC -shared -fvisibility=hidden -std=gnu11 $CFLAGS -I'$PORT/build' -I/mv/wrapper \
+    gcc -O2 -Wall -Wextra -Wno-unused-parameter -fPIC -shared -fvisibility=hidden -std=gnu11 $CFLAGS $CFLAGS_ARM -I'$PORT/build' -I/mv/wrapper \
         $SOURCES $ADAPTER_SRC /mv/wrapper/vst2_wrap.c $LIBS -lpthread -Wl,--no-undefined -o '$PORT/build/$SO'
     strip '$PORT/build/$SO'
     echo \"exported: \$(readelf --dyn-syms -W '$PORT/build/$SO' | grep -E ' GLOBAL .* [0-9]+ [A-Za-z]' | grep -v UND | awk '{print \$8}' | tr '\n' ' ')\"
@@ -70,8 +70,8 @@ else
     for f in $SOURCES; do
       o=\"$PORT/build/\${f//\//_}.o\"
       case \"\$f\" in
-        *.cpp|*.cc|*.cxx) g++ -O2 -Wall -Wextra -Wno-unused-parameter -fPIC -fvisibility=hidden -std=gnu++11 $CFLAGS -I'$PORT/build' -I/mv/wrapper -c \"\$f\" -o \"\$o\" ;;
-        *) gcc -O2 -Wall -Wextra -Wno-unused-parameter -fPIC -fvisibility=hidden -std=gnu11 $CFLAGS -I'$PORT/build' -I/mv/wrapper -c \"\$f\" -o \"\$o\" ;;
+        *.cpp|*.cc|*.cxx) g++ -O2 -Wall -Wextra -Wno-unused-parameter -fPIC -fvisibility=hidden -std=gnu++11 $CFLAGS $CFLAGS_ARM -I'$PORT/build' -I/mv/wrapper -c \"\$f\" -o \"\$o\" ;;
+        *) gcc -O2 -Wall -Wextra -Wno-unused-parameter -fPIC -fvisibility=hidden -std=gnu11 $CFLAGS $CFLAGS_ARM -I'$PORT/build' -I/mv/wrapper -c \"\$f\" -o \"\$o\" ;;
       esac
       OBJS=\"\$OBJS \$o\"
     done
