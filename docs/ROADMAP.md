@@ -24,8 +24,8 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
 - [ ] **VST programs and wrapper presets: device check.** vst.json `"programs"` / `"presets"` are in (2026-10-07, offline,
       host-tested); confirm on a device that MPC's PRESET menu lists and loads them. Not yet: programs whose count
       changes at run time (user banks) or names stepped from an engine that can't name a preset without loading it.
-- [ ] **One engine call at a time.** A per-instance recursive mutex around engine calls in `wrapper/vst2_wrap.c`
-      (screen and audio threads both call the engine; NOTES 2026-10-07).
+- [ ] **One engine call at a time: device check.** Done offline 2026-10-07 (`eng_set()` etc. in `wrapper/vst2_wrap.c`, a
+      two-thread section in `tools/host_test.c`); measure the uncontended cost on a device with docs/BENCH.md.
 - [ ] **Engine-driven live updates need a new wrapper mechanism.** (Partly stale: `HAS_DISPLAY_REV` now polls an
       engine's `display_rev` and refreshes the host, NOTES "display_rev"; another fork measured that repainting
       costs MPC's screen thread a lot, NOTES 2026-10-07. Re-check what is left before working on this.) Confirmed on a Force 2026-09-25

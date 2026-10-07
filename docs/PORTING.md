@@ -19,7 +19,8 @@ Add a `vst.json` next to the engine (format in `tools/gen_vst.py`'s docstring; e
 `mpc-vst-maze/vst/vst.json`), then run `tools/build_port.sh path/to/vst.json`. That builds the skin from
 `layout` (or from an auto-layout when there's none, which is a good first pass), `params.h`, the `.so` (linked with
 `wrapper/vst2_wrap.c`) and `pluginlist-entry.xml`, all in `build/` next to `vst.json`. The port's own `build.sh` should
-just call it. Don't vendor copies of the wrapper or tools -- a port source that implements `mpc_engine()` itself
+just call it (a build that links `wrapper/vst2_wrap.c` itself must add `-lpthread`: the wrapper's engine lock needs
+it on the device's glibc 2.31 toolchain). Don't vendor copies of the wrapper or tools -- a port source that implements `mpc_engine()` itself
 can `#include "engine.h"` directly (the builder puts `wrapper/` on the include path). Then bench it (docs/BENCH.md) and package it (docs/RELEASING.md).
 
 **Vendor the engine's own source into the port's repo; don't fetch it at build time.** If the DSP comes from a

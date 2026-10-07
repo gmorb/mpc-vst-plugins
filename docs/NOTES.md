@@ -1223,3 +1223,13 @@ MPC's PRESET menu list and load such programs on a Live II ("reported by other f
   a restored chunk. The picked preset index isn't in the engine's state: after a project reload the menu shows the
   first preset's name (the sound is restored from the chunk as before).
 - `"programs"` on a `"display": "int"` param names program n by `get_param("<key>:<n>")`, else "<Name> <n>".
+
+## 2026-10-07: one engine call at a time per instance (offline)
+`wrapper/vst2_wrap.c` now wraps every engine call but create/destroy (`eng_set`, `eng_get`, `eng_midi`, `eng_render`,
+`eng_process`) in a per-instance recursive, priority-inheriting mutex, never held while calling the host. Why: the
+JUCE host calls parameters, chunks and displays on its message thread while audio runs on another, and another fork
+saw an engine that assumed one caller abort MPC on a Live II ("reported by other forks" above). `tools/host_test.c`
+now runs 3000 screen-side sets/reads/display reads on a second thread while rendering (ASan); every `poc/` port with
+a test passes. Links need `-lpthread` (added to `build_port.sh` and `test_port.sh`): on the device toolchain's glibc
+2.31, `pthread_mutexattr_setprotocol` is in libpthread. Not yet run on a device; the uncontended cost (one atomic
+operation per call) should be checked with docs/BENCH.md.

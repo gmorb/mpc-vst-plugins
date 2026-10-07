@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <pthread.h>
 #include "params.h"
 typedef struct AEffect AEffect;
 typedef intptr_t (*cb)(AEffect*,int32_t,int32_t,intptr_t,void*,float);
@@ -173,6 +174,33 @@ static void step_of_option_tests(AEffect *a) {
           PARAMS[prev].key, PARAMS[t].key, a->getP(a, t));
 }
 
+/* Two threads, as a JUCE host drives a plugin: parameter sets/reads and display text on one, audio on the other. The
+ * wrapper runs one engine call at a time (vst2_wrap.c eng_set()); an engine that is unsafe without that crashes here. */
+static AEffect *g_two;
+static volatile int g_two_done;
+static void *screen_thread(void *arg) {
+    char txt[256];
+    unsigned r = 1;
+    (void)arg;
+    for (int k = 0; k < 3000 && !g_two_done; k++) {
+        int i = (int)((r = r * 1103515245u + 12345u) >> 8) % (NPARAMS > 0 ? NPARAMS : 1);
+        if (PARAMS[i].momentary || PARAMS[i].step_target >= 0) continue;
+        g_two->setP(g_two, i, (float)((r >> 4) % 1000) / 999.0f);
+        g_two->getP(g_two, i);
+        g_two->d(g_two, 7, i, 0, txt, 0);   /* effGetParamDisplay */
+    }
+    return 0;
+}
+static void two_thread_tests(AEffect *a) {
+    pthread_t t;
+    g_two = a; g_two_done = 0;
+    pthread_create(&t, 0, screen_thread, 0);
+    run(a, 300);
+    g_two_done = 1;
+    pthread_join(t, 0);
+    CHECK(1, "two threads: 3000 screen-side sets/reads while rendering");
+}
+
 /* VST programs (vst.json "presets" / "programs"): every program has a name, picking one moves the engine there, the
  * plugin reports the new current program, and the parameters it set are reported back to the host (housekeeping). */
 static void program_tests(AEffect *a) {
@@ -184,6 +212,7 @@ static void program_tests(AEffect *a) {
         CHECK(a->d(a, 29, k, 0, name, 0) == 1 && name[0], "program %d is named \"%s\"", k, name);
     }
     int pick = a->np - 1;
+    if (pick == a->d(a, 3, 0, 0, 0, 0)) { printf("warn one program, already current: picking it changes nothing\n"); return; }
     memset(automated, 0, sizeof automated);
     a->d(a, 2, 0, pick, 0, 0);
     run(a, 1);
@@ -358,6 +387,7 @@ int main(void) {
     } else printf("warn no chunk (engine has no \"state\" param)\n");
 
     program_tests(a);
+    two_thread_tests(a);
     a->d(a, 1, 0, 0, 0, 0); b->d(b, 1, 0, 0, 0, 0);
     printf("%s\n", fails ? "FAILED" : "PASSED");
     return fails ? 1 : 0;
