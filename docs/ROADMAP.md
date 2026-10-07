@@ -22,7 +22,9 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
       `gen_vst.py`; OPTS (incomplete switch groups) added the same day. Still to add: Q-Links out of the layout's order
       (needs the layout next to the skin).
 - [ ] **VST programs and wrapper presets: device check.** vst.json `"programs"` / `"presets"` are in (2026-10-07, offline,
-      host-tested); device-checked 2026-10-07 on a Force: the PRESET menu lists and loads them (reload behaviour, re-pick and CC 20 not yet checked on a device). Not yet: programs whose count
+      host-tested); device-checked 2026-10-07 on a Force: the
+      PRESET menu lists and loads them. Still to check on a device: a tweak surviving a project reload (and the name the menu
+      then shows) and re-picking the current preset. Not yet supported: programs whose count
       changes at run time (user banks) or names stepped from an engine that can't name a preset without loading it.
 - [ ] **MIDI CC 20-35 / NRPN control: device check.** In the wrapper 2026-10-07 (offline, host-tested); the other fork saw
       CC 20/21 from a sequencer move an instrument's controls on a Live II. Confirm with one of ours, and that MPC keeps
