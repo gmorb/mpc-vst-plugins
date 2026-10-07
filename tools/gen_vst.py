@@ -20,6 +20,8 @@ vst.json (paths are relative to the vst.json's folder):
       "presets": "presets.json",                 # optional: the wrapper's own presets, listed in MPC's PRESET menu
       "programs": {"param": "preset"},           # optional instead: the engine's own preset parameter as that list
                                                  #   (both: program_lines() below)
+      "cc": false, "nrpn": false,                # optional: no CC 20-35 -> first page's Q-Links / no NRPN -> any parameter
+                                                 #   (both on by default; cc_lines() below)
       "custom_skin": true,                       # optional: params.h + plugin-list entry only; the port makes the skin itself
       "defines": {"HAS_LFO_BPM": 1},             # optional extra #defines in params.h
                                                  #   (HAS_LFO_BPM: host tempo as "lfo_bpm"; HAS_TRANSPORT: play/stop as "transport")
@@ -162,6 +164,7 @@ def gen_params(cfg, params, out):
     if cfg.get("effect"):
         lines.append("#define PLUG_EFFECT 1")
     lines += program_lines(cfg, params, key_to_index)
+    lines += cc_lines(cfg, params, key_to_index)
     open(out, "w").write("\n".join(lines) + "\n")
 
 
@@ -226,6 +229,30 @@ def program_lines(cfg, params, key_to_index):
             raise SystemExit("vst.json programs: %r must be an option list or a \"display\": \"int\" range" % k)
         return ["#define PROG_PARAM %d" % key_to_index[k], "#define NPROGRAMS %d" % min(n, 1024)]
     return []
+
+
+def cc_lines(cfg, params, key_to_index):
+    """MIDI control from outside the screen (wrapper/vst2_wrap.c midi_control()):
+       CC 20-35 move the first tab's first `qlinks` line, slot by slot (column 1 top to bottom = CC 20-23, column 2 =
+       24-27, ...; "-", triggers and text displays get none); vst.json "cc": false turns it off.
+       NRPN n (CC 99/98, value on CC 6, fine on 38) sets parameter n, on any page; "nrpn": false turns it off."""
+    out = []
+    if cfg.get("cc", True) and cfg.get("layout"):
+        import shadow_skin
+        here = os.path.dirname(os.path.abspath(sys.argv[1]))
+        tabs, _ = shadow_skin.parse_layout(os.path.join(here, cfg["layout"]))
+        keys = tabs[0]["qlinks"][0][1] if tabs and tabs[0]["qlinks"] else []
+        cc = []
+        for k in keys[:16]:
+            p = params[key_to_index[k]] if k in key_to_index else None
+            ok = p is not None and not p.get("momentary") and p.get("display") != "string" and not p.get("step_of")
+            cc.append(key_to_index[k] if ok else -1)
+        if any(i >= 0 for i in cc):
+            out += ["static const int PLUG_CC[16] = {%s};" % ", ".join(str(i) for i in cc + [-1] * (16 - len(cc))),
+                    "#define HAS_CC_MAP 1"]
+    if cfg.get("nrpn", True):
+        out.append("#define HAS_NRPN 1")
+    return out
 
 
 def entry(cfg):

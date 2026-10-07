@@ -24,6 +24,9 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
 - [ ] **VST programs and wrapper presets: device check.** vst.json `"programs"` / `"presets"` are in (2026-10-07, offline,
       host-tested); confirm on a device that MPC's PRESET menu lists and loads them. Not yet: programs whose count
       changes at run time (user banks) or names stepped from an engine that can't name a preset without loading it.
+- [ ] **MIDI CC 20-35 / NRPN control: device check.** In the wrapper 2026-10-07 (offline, host-tested); the other fork saw
+      CC 20/21 from a sequencer move an instrument's controls on a Live II. Confirm with one of ours, and that MPC keeps
+      none of CC 20-35 for itself.
 - [ ] **One engine call at a time: device check.** Done offline 2026-10-07 (`eng_set()` etc. in `wrapper/vst2_wrap.c`, a
       two-thread section in `tools/host_test.c`); measure the uncontended cost on a device with docs/BENCH.md.
 - [ ] **Engine-driven live updates need a new wrapper mechanism.** (Partly stale: `HAS_DISPLAY_REV` now polls an

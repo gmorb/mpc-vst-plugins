@@ -1233,3 +1233,16 @@ now runs 3000 screen-side sets/reads/display reads on a second thread while rend
 a test passes. Links need `-lpthread` (added to `build_port.sh` and `test_port.sh`): on the device toolchain's glibc
 2.31, `pthread_mutexattr_setprotocol` is in libpthread. Not yet run on a device; the uncontended cost (one atomic
 operation per call) should be checked with docs/BENCH.md.
+
+## 2026-10-07: MIDI CC 20-35 and NRPN control in the wrapper (offline)
+After the other fork's Live II finding ("reported by other forks": CC 20/21 from a sequencer moved an instrument's
+controls through the track's MIDI input; MIDI-learning from a plugin's port froze MPC there):
+- gen_vst.py writes `PLUG_CC[16]` from the first tab's first `qlinks` line (column 1 top to bottom = CC 20-23, column 2 =
+  24-27, ...; `-`, triggers and text readouts get none). `effProcessEvents` sets the parameter as a touch would (option
+  lists and whole numbers round to the nearest step) and keeps the CC from the engine.
+- NRPN n (CC 99 MSB / 98 LSB) with its value on CC 6 (7-bit) and CC 38 (14-bit with the last CC 6) sets parameter n on
+  any page; CC 101/100 (an RPN) deselects it and goes to the engine as before.
+- The host hears of CC-driven changes from `housekeeping()` at most every 1024 frames, so the screen follows without a
+  flood. On by default; vst.json `"cc": false` / `"nrpn": false` turn each off (an engine that reads those CCs itself).
+host_test checks a CC 20 move and its report, and an NRPN set, on any parameter that keeps a value set from outside
+(engine-driven displays don't). Not yet run on a device.

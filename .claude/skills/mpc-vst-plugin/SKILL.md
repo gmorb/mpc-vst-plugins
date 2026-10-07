@@ -179,6 +179,11 @@ vst.json `"presets": "presets.json"` (the wrapper's own list) or `"programs": {"
 param) makes the plugin report VST programs; MPC lists them in the plugin header's PRESET menu. Details: docs/PORTING.md.
 The host test checks names, picking and the host redraw. A re-pick of the current program is ignored (JUCE does it at load).
 
+## MIDI control and the engine lock
+CC 20-35 drive the first page's Q-Links, NRPN n sets parameter n (vst.json `"cc"`/`"nrpn": false` to turn off; the
+CCs used never reach the engine). Every engine call is serialised per instance (`eng_set()` etc.): an engine needn't be
+thread-safe, but a slow `set_param` holds audio. Links need `-lpthread`. host_test covers both. Details: docs/NOTES.md.
+
 ## Design techniques (from community skins; docs/COMMUNITY_SKINS.md)
 - `"art": "html"` + `art_css` + a full `theme_*` palette; one script-made background `art` per tab with frames and
   captions baked in; only live parts are widgets. Keep coordinates in one place (script writes or reads the layout).

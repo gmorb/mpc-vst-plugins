@@ -123,6 +123,10 @@ for the pattern). This applies to every future port, not just ones that hit the 
       gives as `get_param("<key>:<n>")`); one without sets `"presets": "presets.json"` (`{"presets": [{"name", "values":
       {key: value}}]}`, values in each parameter's units or an option's label; gen_vst.py checks them). Set every
       parameter in every preset, in the order the engine needs, and make the first one the plugin's default sound.
+- [ ] MIDI control (2026-10-07, offline): CC 20-35 on the track's MIDI input move the first page's Q-Links (first `qlinks`
+      line, column 1 top to bottom = CC 20-23) and NRPN n (CC 99/98, value on CC 6, fine on 38) sets parameter n. Both on by
+      default, and those CCs then don't reach the engine: an engine that reads CC 20-35 or NRPN itself sets vst.json
+      `"cc": false` / `"nrpn": false`.
 - [ ] Skin touch-ups the layout can't express (per-role live-text sizes/colours in `TUI.json`): a script named by
       vst.json `"skin_post"`, run on the built skin folder; make it fail when its targets are missing. Design ideas from
       other ports: `docs/COMMUNITY_SKINS.md`.

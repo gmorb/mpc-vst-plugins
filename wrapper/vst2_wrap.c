@@ -132,6 +132,10 @@ typedef struct {
     float open[NPARAMS];     /* popup "open" flags (popup.h): kept here, never sent to the DSP or saved */
     char chunk[8192];
     pthread_mutex_t lock;    /* one engine call at a time: see eng_set() */
+    int nrpn;                /* HAS_NRPN: the parameter CC 99/98 selected (-1: none), its coarse value from CC 6 */
+    int nrpn_msb;
+    volatile char cc_changed[NPARAMS];   /* set from MIDI CC/NRPN, reported to the host at most every 1024 frames */
+    int cc_report;           /* frames until CC-driven changes are reported again */
     int program;             /* NPRESETS: the preset last picked (not in the engine's state; 0 after a reload) */
 #if SAMPLE_ACCURATE
     struct { int32_t frame; uint8_t msg[3]; } evq[WRAP_EVQ];   /* this block's MIDI, sorted by frame (see queue_midi) */
@@ -466,6 +470,11 @@ static void housekeeping(AEffect *e, int32_t n) {
             }
         }
     }
+    if ((w->cc_report -= n) <= 0) {
+        w->cc_report = 1024;
+        for (int i = 0; i < NPARAMS; i++)
+            if (w->cc_changed[i]) { w->cc_changed[i] = 0; w->master(&w->fx, audioMasterAutomate, i, 0, 0, get_norm(w, i)); }
+    }
     if (w->need_update_display) {
         w->need_update_display = 0;
         w->master(&w->fx, audioMasterUpdateDisplay, 0, 0, 0, 0.0f);
@@ -520,6 +529,36 @@ static void run_block(AEffect *e, float **out, int32_t n, int accumulate) {
 static void processReplacing(AEffect *e, float **in, float **out, int32_t n) { (void)in; run_block(e, out, n, 0); }
 static void process(AEffect *e, float **in, float **out, int32_t n) { (void)in; run_block(e, out, n, 1); }
 #endif
+
+/* MIDI control from a sequencer or controller on the track's MIDI input (gen_vst.py cc_lines()): CC 20-35 move the
+ * first page's Q-Links, NRPN n sets parameter n. Set as a touch would (an option list rounds to the nearest option);
+ * the host hears about it from housekeeping(), at most every 1024 frames per control, so the screen follows without a
+ * flood. Returns 1 when the message was used here (it then doesn't go to the engine). */
+static void cc_set(wrap_t *w, int i, float n) {
+    if (i < 0 || i >= NPARAMS || popup_is(i)) return;
+    const param_t *p = &PARAMS[i];
+    if (p->nopts > 1) n = roundf(clamp01(n) * (p->nopts - 1)) / (p->nopts - 1);
+    else if (p->int_display && p->max > p->min) n = roundf(clamp01(n) * (p->max - p->min)) / (p->max - p->min);
+    setParameter(&w->fx, i, n);
+    w->cc_changed[i] = 1;
+}
+
+static int midi_control(wrap_t *w, const uint8_t *m) {
+    if ((m[0] & 0xF0) != 0xB0) return 0;
+    int cc = m[1] & 127, v = m[2] & 127;
+#ifdef HAS_CC_MAP
+    if (cc >= 20 && cc <= 35 && PLUG_CC[cc - 20] >= 0) { cc_set(w, PLUG_CC[cc - 20], v / 127.0f); return 1; }
+#endif
+#ifdef HAS_NRPN
+    if (cc == 99) { w->nrpn = (v << 7) | (w->nrpn >= 0 ? w->nrpn & 127 : 0); return 1; }
+    if (cc == 98) { w->nrpn = (w->nrpn >= 0 ? w->nrpn & ~127 : 0) | v; return 1; }
+    if (cc == 101 || cc == 100) { w->nrpn = -1; return 0; }   /* an RPN (bend range ...): the engine's */
+    if (w->nrpn >= 0 && w->nrpn < NPARAMS && cc == 6) { w->nrpn_msb = v; cc_set(w, w->nrpn, v / 127.0f); return 1; }
+    if (w->nrpn >= 0 && w->nrpn < NPARAMS && cc == 38) { cc_set(w, w->nrpn, (w->nrpn_msb * 128 + v) / 16383.0f); return 1; }
+#endif
+    (void)w; (void)cc; (void)v;
+    return 0;
+}
 
 static void copy_str(void *dst, const char *src, size_t max) {
     strncpy(dst, src, max - 1);
@@ -645,6 +684,7 @@ static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void
         for (int i = 0; i < ev->numEvents; i++)
             if (ev->events[i]->type == 1) {
                 VstMidiEvent *m = (VstMidiEvent *)ev->events[i];
+                if (midi_control(w, (const uint8_t *)m->midiData)) continue;
 #if SAMPLE_ACCURATE
                 queue_midi(w, (const uint8_t *)m->midiData, m->deltaFrames);
 #else
@@ -704,6 +744,7 @@ __attribute__((visibility("default"))) AEffect *VSTPluginMain(audioMasterCallbac
     w->master = master;
     w->pos = DSP_BLOCK;
     for (int i = 0; i < NPARAMS; i++) w->last_pos[i] = w->last_norm[i] = -1;
+    w->nrpn = -1;
     AEffect *e = &w->fx;
     e->magic = 0x56737450; /* 'VstP' */
     e->dispatcher = dispatcher;
