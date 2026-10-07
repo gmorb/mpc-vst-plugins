@@ -725,6 +725,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
         ppms.append((ppm, os.path.join(skin_dir, name + ".png")))
         return ppm
 
+    popopt_img, popopt_done = {}, set()   # popup option images shared by identical options (text, colours, size)
     radii, sliders, looks = set(), set(), {}   # knob (r, look id), slider (image, w, h, vert, look id); look id -> look
     for t, tab in enumerate(tabs_in):
         kids, controls = [], []
@@ -1054,10 +1055,15 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 n = len(w["options"])
                 fills, inks = popup_option_fills(w), popup_option_inks(w)
                 for o, (ox, oy, ow, oh) in enumerate(orects):
-                    img = "sh_popopt_%d_%s_%d" % (t, w["key"], o)
-                    for state, fill, ink in (("on", SEG_ON, SEG_ON_TX), ("off", fills[o], inks[o])):
-                        script += ["clear|" + LCD, "seg|%d|%d|%d|%d|%s|%s|%s" % (ox, oy, ow, oh, fill, ink, w["options"][o]),
-                                   "crop|%s|%d|%d|%d|%d" % (art("%s_%s" % (img, state)), ox, oy, ow, oh)]
+                    # an option's two images depend only on its text, colours and size: pickers with the same options share them
+                    # (a 76-option destination list used on two dozen controls was 3000 files)
+                    sig = (w["options"][o], fills[o], inks[o], ow, oh)
+                    img = popopt_img.setdefault(sig, "sh_po_%d" % len(popopt_img))
+                    if img not in popopt_done:
+                        popopt_done.add(img)
+                        for state, fill, ink in (("on", SEG_ON, SEG_ON_TX), ("off", fills[o], inks[o])):
+                            script += ["clear|" + LCD, "seg|%d|%d|%d|%d|%s|%s|%s" % (ox, oy, ow, oh, fill, ink, w["options"][o]),
+                                       "crop|%s|%d|%d|%d|%d" % (art("%s_%s" % (img, state)), ox, oy, ow, oh)]
                     okey = "shPopOpt_%d_%s_%d" % (t, w["key"], o)
                     defs[okey] = _local(okey, [_action("Mouse Down", "Q-Link")],
                                         [_button(img + "_on.png", img + "_off.png", o, n, ow, oh)])
