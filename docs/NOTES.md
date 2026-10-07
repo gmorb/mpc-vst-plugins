@@ -1211,7 +1211,7 @@ needs a check on our devices before it becomes a rule. Survey of the techniques:
 - **ALSA mirror ports.** MPC adds its own copy ("<client> <port>") of each new sequencer port on its client, which has
   a lower number, so a substring search by port name finds MPC's copy first. Match exactly, or by pid.
 
-## 2026-10-07: VST programs from the wrapper (offline; device check pending)
+## 2026-10-07: VST programs from the wrapper (offline; device-checked in part)
 `wrapper/vst2_wrap.c` now reports VST programs (`numPrograms`, `effSetProgram`/`effGetProgram`, `effGetProgramName`,
 `effGetProgramNameIndexed`) when vst.json has `"presets"` (a `presets.json` compiled into `params.h` by gen_vst.py) or
 `"programs": {"param": key}` (an engine preset parameter: one program per option or whole number). Another fork saw
@@ -1223,6 +1223,10 @@ MPC's PRESET menu list and load such programs on a Live II ("reported by other f
   a restored chunk. The picked preset index isn't in the engine's state: after a project reload the menu shows the
   first preset's name (the sound is restored from the chunk as before).
 - `"programs"` on a `"display": "int"` param names program n by `get_param("<key>:<n>")`, else "<Name> <n>".
+- Device check (2026-10-07, Force, MPC OS version not noted; test port = `poc/steptest` copy with `presets.json` of Init/Bright/Dark
+  and a 3-control layout): MPC's PRESET menu lists the presets, and picking Bright, Dark and Init moves MODE, NUM and CONT
+  on screen (user-observed). **Not checked on the device:** a tweak surviving a project reload and the name the menu then
+  shows, re-picking the current preset, and CC 20 moving the first Q-Link (the MIDI CC section stays offline only).
 
 ## 2026-10-07: one engine call at a time per instance (offline)
 `wrapper/vst2_wrap.c` now wraps every engine call but create/destroy (`eng_set`, `eng_get`, `eng_midi`, `eng_render`,
