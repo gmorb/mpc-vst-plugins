@@ -119,6 +119,8 @@ design.
 - App-like plugins: things that fetch from the web, stream, or write files that MPC's browser can open.
 - Pages with pop-up option lists, panels that change with a mode, live readouts, and your own look: any font,
   knob style, gradient or shadow, and artwork drawn in Inkscape, baked into the page.
+- Presets in MPC's PRESET menu, from the engine's own preset parameter or a `presets.json` (the menu listing and loading
+  checked on a Force; offline-tested otherwise). CC 20-35 and NRPN control from MIDI (offline-tested only so far).
 - Updating a plugin without restarting MPC: replace the file, remove every copy from the project, insert it again.
 - Shipping a plugin as one zip with an install script.
 
