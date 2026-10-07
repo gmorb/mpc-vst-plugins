@@ -117,6 +117,9 @@ for the pattern). This applies to every future port, not just ones that hit the 
 - [ ] Instruments-browser tile: `"tile": "art/tile.png"` (270x110 PNG) in vst.json puts the artwork tile in the Sounds >
       INSTRUMENTS browser and ships a Default preset so the tile opens the plugin (`tools/xpl.py`; NOTES.md
       "Instruments-browser tiles"). Without it the plugin is a folder tile in the browser.
+- [ ] Skin touch-ups the layout can't express (per-role live-text sizes/colours in `TUI.json`): a script named by
+      vst.json `"skin_post"`, run on the built skin folder; make it fail when its targets are missing. Design ideas from
+      other ports: `docs/COMMUNITY_SKINS.md`.
 
 ## 4. Device
 - [ ] The plugin is one folder, `/sdcard/Synths/<vendor> - VST - <name>/`: the `.so`, `Plugin Skins/`, `version.xml` and any data next to the `.so`.
