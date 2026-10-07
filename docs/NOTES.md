@@ -1251,3 +1251,10 @@ controls through the track's MIDI input; MIDI-learning from a plugin's port froz
   flood. On by default; vst.json `"cc": false` / `"nrpn": false` turn each off (an engine that reads those CCs itself).
 host_test checks a CC 20 move and its report, and an NRPN set, on any parameter that keeps a value set from outside
 (engine-driven displays don't). Not yet run on a device.
+
+## 2026-10-07: drive exec `status` was confusing on a Force with two names under /media (user report, Discord, installer v0.4; offline fix)
+
+A Force user saw `No drive under /media is mounted noexec` on the first `status`, then `Drives mounted noexec: /media/662522` (`state=stock`) after closing the plugin manager page and the terminal. Their `/media` held `662522`, `acvs-synths`, `az01-internal`, `az01-internal-sd` and `SSD - Force`; they asked whether the SSD, not `662522`, must be patched.
+- `status` only lists mounts that `/proc/self/mountinfo` shows as `noexec` (`candidates`), so `662522` is the drive MPC mounted `noexec` at that time; `SSD - Force` was not a `noexec` mount then (not mounted, or mounted `exec`). `edisksd` names the mount point after the volume label, or a number when there is none; a leftover folder in `/media` is not proof of a mounted drive. Which of the two is the SSD was not shown by the output: needs `mount | grep /media` from the user (not yet received).
+- Why the first run found nothing is not established (the drive was probably not mounted yet or was remounted; the user's mount lines were not captured).
+- Change (offline only, tested against fake mountinfo and `tools/test_drive_exec.py`): `status` now also prints every mount under `/media` with filesystem, device and `exec`/`noexec`, so the output says which name is which drive.
