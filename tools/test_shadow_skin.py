@@ -176,6 +176,30 @@ class BuildAttrs(unittest.TestCase):
         self.assertEqual([k for k in defs if k.startswith("shKnob")], ["shKnob30_ls%g" % shadow_skin.LABEL_SCALE])
 
 
+class StockStrips(unittest.TestCase):
+    """Slider and meter filmstrips as stock skins lay them out: frames of the widget's own size, numFrames = the count,
+    the strip under MAX_STRIP px (docs/NOTES.md 2026-10-07)."""
+
+    def test_short_widgets_keep_128_frames(self):
+        self.assertEqual(shadow_skin.strip_frames(40), shadow_skin.FRAMES)
+
+    def test_tall_widgets_get_fewer_frames(self):
+        n = shadow_skin.strip_frames(200)
+        self.assertEqual(n, 61)
+        self.assertLessEqual(n * 200, shadow_skin.MAX_STRIP)
+
+    def test_a_meter_keeps_its_own_frame_count(self):
+        self.assertEqual(shadow_skin.strip_frames(86, 3), 3)
+
+    def test_slider_bounds_are_its_own_size(self):
+        b = BuildAttrs()
+        defs, _ = b.build("[tab T]\nslider_v cx=500 cy=350 w=40 h=200 key=a\n")
+        sd = [v for k, v in defs.items() if k.startswith("shSlider")][0]
+        strip = [c for c in sd["componentsData"] if c["componentData"]["type"] == "Knob"][0]
+        self.assertEqual(strip["componentData"]["data"]["numFrames"], 61)
+        self.assertEqual(strip["bounds"]["bounds"].split()[2:], ["40", "200"])
+
+
 def _gen_like_tui():
     """A TUI.json shaped like write_skin's output (MPC OS 3.x): one tab pointing at a local page definition, one
     widget definition holding a Knob and a Button, version 4 definitions, tab 3, Knob 5, Button 2."""

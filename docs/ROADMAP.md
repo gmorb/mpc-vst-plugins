@@ -15,8 +15,8 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
       (one image per option) on a Force.
 - [ ] **Builder features from other forks (docs/COMMUNITY_SKINS.md "Adoption list", 2026-10-07).** Port from
       `saustin2010/vst_instruments`' patch to `tools/shadow_skin.py`. Done offline 2026-10-07 (device check pending):
-      `banks=`, `ns=`/`vs=`/`bw=` on knobs and sliders. Still to do: `lay=side` knobs, `ns=0`/`bw=` on toggles, `sh=`
-      on segments, sliders and meters as stock filmstrips (frames of their own size, `numFrames` = count, <= 12288 px).
+      `banks=`, `ns=`/`vs=`/`bw=` on knobs and sliders. Sliders and meters as stock filmstrips (frames of their own size, `numFrames` = count,
+      <= 12288 px) done 2026-10-07. Still to do: `lay=side` knobs, `ns=0`/`bw=` on toggles, `sh=` on segments.
 - [ ] **Skin checker.** A `check_skin.py`-style pass over the built `TUI.json`/`Q-Links.json` (wrong bindings,
       Q-Links off their page, overlapping touch boxes, boxes past 1280x628, option-count mismatches), run by
       `tools/test_port.sh`.

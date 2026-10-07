@@ -1059,8 +1059,9 @@ so a reboot seems to clear it (not confirmed); MPC restarts (`acvs`) don't. A te
 and restarts reached 729 files / 2.2 GB and filled the partition (copies failed with "No space left on device").
 The files are not held open between loads, so `rm -f /var/tmp/filmstrips/temp_*.img` frees the space safely
 (delete through `/var`, never the overlay's upper dir).
-Size per load is frames × frame area × 4: filmstrip frames are square (`square_strip`), so a wide thin bar as a
-`meter` is very expensive (a 360×4 bar became 128 frames of 360×360 = 66 MB per load). For bars use `picture`
+Size per load is frames × frame area × 4. Filmstrip frames used to be square-padded (`square_strip`), so a wide thin
+bar as a `meter` was very expensive (a 360×4 bar became 128 frames of 360×360 = 66 MB per load); since 2026-10-07
+slider and meter frames are their own w × h (see "reported by other forks" below), which makes that bar ~0.7 MB. For bars use `picture`
 (one image per step, mode images, no filmstrip), as the Plugin Manager does.
 
 ## Device screenshots (MPC One, 2026-10-01)

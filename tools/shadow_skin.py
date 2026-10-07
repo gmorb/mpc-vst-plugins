@@ -97,7 +97,17 @@ FRAMES = 128               # filmstrip frames emitted by (l)sstrip / (l)strip
 ROT_FRAMES = FRAMES - 1     # rotary knob FilmStrip: a rotation reads one fewer than the strip length
 STRIP_FRAMES = FRAMES       # vertical slider / meter FilmStrip: value is the frame's vertical position, so
                             # numFrames must equal the exact strip length; FRAMES-1 mis-sizes the frame and
-                            # shows a second thumb near the top (device-confirmed, MPC One)
+                            # shows a second thumb near the top (device-confirmed, MPC One). Their strips can
+                            # have fewer frames (strip_frames); numFrames is always the count emitted.
+MAX_STRIP = 12288           # tallest slider/meter filmstrip (px) seen drawing right: 128-frame strips of 16640+ px
+                            # animated wrongly on a Live II; knob strips up to 96x12288 are fine (docs/NOTES.md 2026-10-07)
+
+
+def strip_frames(h, want=FRAMES):
+    """Frames of a slider/meter filmstrip whose frames are h px tall: as many as fit in MAX_STRIP (at most want)."""
+    return max(2, min(want, MAX_STRIP // max(1, h)))
+
+
 KNOB_QLINKS = [13, 9, 5, 1, 14, 10, 6, 2]
 CONTROL_KINDS = ("knob", "slider_v", "slider_h", "toggle", "button", "enum_h", "enum_v", "readout", "stepper", "list", "menu",
                  "popup", "meter")
@@ -916,13 +926,16 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 sw_, sh_ = w["w"], w["h"]
                 vert = kind == "slider_v"
                 img = "sh_%s_%dx%d%s" % (kind, sw_, sh_, sfx)
-                sliders.add((img, sw_, sh_, vert, lid))
-                sq = max(sw_, sh_)   # filmstrip frames are square (as stock); padding is transparent
-                cw = max(sq, w["bw"]) if w.get("bw") else max(130, sq)
+                nfr = strip_frames(sh_)
+                img += "_f%d" % nfr if nfr != FRAMES else ""
+                sliders.add((img, sw_, sh_, vert, lid, nfr))
+                # as stock skins (Electric slider_distance 250x6969 = 101 frames of 69): frames of the slider's own
+                # w x h, numFrames = their count, bounds = the slider (docs/NOTES.md 2026-10-07)
+                cw = max(sw_, w["bw"]) if w.get("bw") else max(130, sw_)
                 nfont, vfont = float(17 if w.get("ns") is None else w["ns"]), float(22 if w.get("vs") is None else w["vs"])
                 name_h = 0 if nfont == 0 else max(20, round(nfont * 1.2))
                 value_h = max(26, round(vfont * 1.2))
-                name_y = (sq - sh_) // 2 + sh_ + 2
+                name_y = sh_ + 2
                 value_y = name_y + name_h + (2 if name_h else 0)
                 ch = value_y + value_h + 6
                 key = "shSlider_%s_%dx%d%s%s" % ("v" if vert else "h", sw_, sh_, sfx, text_sfx(w, cw))
@@ -931,12 +944,12 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                                                   _action("Enter Pressed", "Show Overlay", "knob overlay")], [
                     _focus(cw, ch),
                     _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": img + ".png",
-                                  "numFrames": STRIP_FRAMES, "invert": False,
+                                  "numFrames": nfr, "invert": False,
                                   "dragOrientation": "Vertical" if vert else "Horizontal",
-                                  "handleName": "Data"}, _bounds((cw - sq) // 2, 0, sq, sq), "Slider"),
+                                  "handleName": "Data"}, _bounds((cw - sw_) // 2, 0, sw_, sh_), "Slider"),
                     ] + ([_name_label(0, name_y, cw, name_h, nfont, INK)] if name_h else []) + [
                     _value_label(0, value_y, cw, value_h, vfont, INK_DIM)]))
-                kids.append(_placed(key, name, i, w["cx"] - cw // 2, w["cy"] - sq // 2, cw, ch))
+                kids.append(_placed(key, name, i, w["cx"] - cw // 2, w["cy"] - sh_ // 2, cw, ch))
             elif kind == "meter" and lk and lk.get("look") == "native":
                 # EXPERIMENTAL, unverified (docs/ROADMAP.md "A native Meter component"): a real Meter component
                 # instead of a Knob/FilmStrip pretending to be one. inactiveImage is the constant background;
@@ -961,16 +974,19 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 kids.append(_placed(key, name, i, w["cx"] - mw // 2, w["cy"] - mh // 2, mw, mh, focus="No"))
             elif kind == "meter":   # a filmstrip with no actions: it shows the parameter, touch does nothing
                 mw, mh = w["w"], w["h"]
-                img = "sh_meter_%dx%d%s" % (mw, mh, sfx)
-                sliders.add((img, mw, mh, 1, lid))
-                sq = max(mw, mh)
-                key = "shMeter_%dx%d%s" % (mw, mh, sfx)
+                # laid out as stock display strips (Bassline knob_phase 76x258 = 3 frames of 86): frames of the meter's
+                # own w x h, its strip's own frame count (frames=, else counted from the image), numFrames = that count
+                own = (lk or {}).get("frames") or (skin_assets.strip_layout(lk["strip"], None, mh / max(1, mw))[2]
+                                                   if lk and lk.get("strip") else FRAMES)
+                nfr = strip_frames(mh, int(own))
+                img = "sh_meter_%dx%d%s_f%d" % (mw, mh, sfx, nfr)
+                sliders.add((img, mw, mh, 1, lid, nfr))
+                key = "shMeter_%dx%d%s_f%d" % (mw, mh, sfx, nfr)
                 defs.setdefault(key, _local(key, [], [
-                    # same vertical filmstrip as a slider (sliders.add above), so it uses STRIP_FRAMES too
-                    _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": img + ".png", "numFrames": STRIP_FRAMES,
+                    _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": img + ".png", "numFrames": nfr,
                                   "invert": False, "dragOrientation": "Vertical", "handleName": "Data"},
-                         _bounds(0, 0, sq, sq), "Meter")]))
-                kids.append(_placed(key, name, i, w["cx"] - sq // 2, w["cy"] - sq // 2, sq, sq, focus="No"))
+                         _bounds(0, 0, mw, mh), "Meter")]))
+                kids.append(_placed(key, name, i, w["cx"] - mw // 2, w["cy"] - mh // 2, mw, mh, focus="No"))
             elif kind == "menu":
                 x, y, rw, rh = w["cx"] - w["w"] // 2, w["cy"] - w["h"] // 2, w["w"], w["h"]
                 key = "shMenu_%dx%d" % (rw, rh)
@@ -1130,11 +1146,11 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 "hideQLinkBounds": not QLINK_COLUMNS,
                 "componentsData": [c for c in kids if title in kid_banks.get(id(c), {title})]}}
 
-    for img, sw_, sh_, vert, lid in sorted(sliders):
+    for img, sw_, sh_, vert, lid, nfr in sorted(sliders):
         if lid:
-            script.append("lsstrip|%s|%d|%d|%d|%d|%s" % (art(img), sw_, sh_, FRAMES, 1 if vert else 0, skin_assets.encode(looks[lid])))
+            script.append("lsstrip|%s|%d|%d|%d|%d|%s" % (art(img), sw_, sh_, nfr, 1 if vert else 0, skin_assets.encode(looks[lid])))
         else:
-            script.append("sstrip|%s|%d|%d|%d|%d|%s" % (art(img), sw_, sh_, FRAMES, 1 if vert else 0, under()))
+            script.append("sstrip|%s|%d|%d|%d|%d|%s" % (art(img), sw_, sh_, nfr, 1 if vert else 0, under()))
     for r, lid in sorted(radii):
         if lid:
             script.append("lstrip|%s|%d|%d|%s" % (art("sh_knob_r%d_%s" % (r, lid)), r, FRAMES, skin_assets.encode(looks[lid])))
@@ -1180,23 +1196,10 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
             tw, th = tb[2] - tb[0], tb[3] - tb[1]
             dr.text(((w_px - tw) / 2 - tb[0], (h_px - th) / 2 - tb[1]), text, font=font, fill="#" + color)
             im.save(path)
-    for img, sw_, sh_, vert, lid in sliders:
-        square_strip(os.path.join(skin_dir, img + ".png"), sw_, sh_)
     for f in os.listdir(work):
         os.remove(os.path.join(work, f))
     os.rmdir(work)
     return list(defs.values()), pages, qmap
-
-
-def square_strip(path, w, h):
-    """w x h frames -> square max(w,h) frames with the slider centred and transparent padding."""
-    from PIL import Image
-    src = Image.open(path).convert("RGBA")
-    n, sq = src.size[1] // h, max(w, h)
-    out = Image.new("RGBA", (sq, sq * n), (0, 0, 0, 0))
-    for k in range(n):
-        out.paste(src.crop((0, k * h, w, (k + 1) * h)), ((sq - w) // 2, k * sq + (sq - h) // 2))
-    out.save(path)
 
 
 def qlink_column_bounds(tab, keys, base_dir="."):

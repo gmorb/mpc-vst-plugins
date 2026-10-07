@@ -94,7 +94,7 @@ Builder (`tools/shadow_skin.py`), all in the vst_instruments patch and so alread
 3. `bw=` touch-box width for close neighbours (**done for knobs and sliders, 2026-10-07**); `lay=side` knob
    (picture left, big value right; step cells).
 4. Sliders and display meters laid out as stock filmstrips (frames of the widget's own size, `numFrames` = count,
-   strips under 12288 px).
+   strips under 12288 px). **Done 2026-10-07 (offline).**
 5. `sh=` on `enum_h`/`enum_v`.
 6. A skin checker like `check_skin.py` (BIND/QLINK/TOUCH/EDGE/OPTS), run by `test_port.sh`.
 
