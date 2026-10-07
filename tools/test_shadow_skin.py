@@ -127,6 +127,55 @@ class FilmStripFrames(unittest.TestCase):
         self.assertEqual(shadow_skin.STRIP_FRAMES, shadow_skin.FRAMES)
 
 
+class BuildAttrs(unittest.TestCase):
+    """banks= (controls per Q-Link sub-page) and ns=/vs=/bw= (text sizes, touch width), built with a stub renderer."""
+    PARAMS = [{"key": k, "name": k.upper(), "min": 0, "max": 1} for k in ("a", "b", "c", "d")]
+
+    def build(self, layout):
+        d = tempfile.mkdtemp()
+        lp, art = os.path.join(d, "layout.conf"), os.path.join(d, "art.sh")
+        open(lp, "w").write(layout)
+        open(art, "w").write("#!/bin/sh\ncat >/dev/null\n")
+        os.chmod(art, 0o755)
+        comps, tabs, _ = shadow_skin.build(lp, self.PARAMS, d, art, lambda a, b: None)
+        defs = {c["key"]: c["value"] for c in comps} if isinstance(comps, list) else comps
+        return defs, tabs
+
+    def tearDown(self):
+        shadow_skin.apply_theme([])
+
+    def page(self, defs, title):
+        return [c["componentData"]["name"] for c in defs["T|" + title]["componentsData"]]
+
+    def test_banks_limit_a_control_to_its_sub_pages(self):
+        defs, _ = self.build('[tab T]\nknob cx=200 cy=300 r=30 key=a banks="ONE"\nknob cx=400 cy=300 r=30 key=b\n'
+                             'frame x=600 y=200 w=200 h=200 title="X" banks="TWO"\n'
+                             'qlinks "ONE" = a,b\nqlinks "TWO" = b\n')
+        one, two = self.page(defs, "ONE"), self.page(defs, "TWO")
+        self.assertEqual(sorted(one), ["Background", "a", "b"])
+        self.assertEqual(sorted(two), ["Background", "Mode", "b"])   # the frame's own image, TWO only
+
+    def test_banks_must_name_a_qlinks_page(self):
+        with self.assertRaises(SystemExit):
+            self.build('[tab T]\nknob cx=200 cy=300 r=30 key=a banks="NOPE"\nqlinks "ONE" = a\n')
+
+    def knob_def(self, defs, prefix="shKnob"):
+        return [v for k, v in defs.items() if k.startswith(prefix)][0]
+
+    def test_knob_text_sizes_and_width(self):
+        defs, _ = self.build("[tab T]\nknob cx=200 cy=300 r=30 key=a ns=0 vs=40 bw=90\n")
+        kd = self.knob_def(defs)
+        names = [c["componentData"]["name"] for c in kd["componentsData"]]
+        self.assertNotIn("Name", names)
+        value = [c for c in kd["componentsData"] if c["componentData"]["name"] == "Value"][0]
+        self.assertEqual(value["componentData"]["data"]["textStyle"]["font"]["height"], 40.0)
+        self.assertEqual(int(value["bounds"]["bounds"].split()[2]), 90)
+
+    def test_plain_knob_unchanged(self):
+        defs, _ = self.build("[tab T]\nknob cx=200 cy=300 r=30 key=a\n")
+        self.assertEqual([k for k in defs if k.startswith("shKnob")], ["shKnob30_ls%g" % shadow_skin.LABEL_SCALE])
+
+
 def _gen_like_tui():
     """A TUI.json shaped like write_skin's output (MPC OS 3.x): one tab pointing at a local page definition, one
     widget definition holding a Knob and a Button, version 4 definitions, tab 3, Knob 5, Button 2."""

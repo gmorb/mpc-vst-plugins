@@ -190,6 +190,14 @@ MPC reads two maps from the skin's `Q-Links.json`:
   MPC's bottom-up grid numbering for you). Without a `qlinks` line, a tab uses its first 16 controls in file order.
 - **Program/track mode** (Q-Links fixed to the track or program, whatever page is showing): one map. Set it with a
   top-level `qlinks_track = key,...` line (same ordering); without it, page 1's set is used.
+- **Per sub-page controls (2026-10-07, offline):** `banks="ONE|TWO"` on a control, frame, text or art line keeps it to
+  those `qlinks` pages of its tab, so each sub-page can show and touch-edit what its Q-Links turn (a step sequencer's
+  PITCH / GATE lanes in the same cells). Baked parts get their own image on those sub-pages. Not yet seen on a device.
+
+## Text size and touch width per control (2026-10-07, offline)
+`knob` and `slider_v`/`slider_h` take `ns=<px>` (name text; `ns=0` drops the name), `vs=<px>` (value text) and
+`bw=<px>` (touch box and text width; default 130). Narrow `bw=` where neighbours sit closer than ~130 px, or MPC gives
+a touch to the wrong control. From `saustin2010/vst_instruments`' fork; not yet seen on a device.
 
 ## Coming next
 Tracked in [ROADMAP.md](ROADMAP.md) ("Skin controls" and "Porting and tooling"), including a build-and-preview

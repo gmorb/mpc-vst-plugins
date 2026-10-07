@@ -14,9 +14,9 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
       an imported filmstrip, image toggles/buttons/segments, a panel picture, a popup list picture and a `picture`
       (one image per option) on a Force.
 - [ ] **Builder features from other forks (docs/COMMUNITY_SKINS.md "Adoption list", 2026-10-07).** Port from
-      `saustin2010/vst_instruments`' patch to `tools/shadow_skin.py`: `banks=` (controls per Q-Link sub-page),
-      `ns=`/`vs=`/`ink=`/`box=no` text sizes and colours per widget, `bw=` touch width, `lay=side` knobs, `sh=` on
-      segments, sliders and meters as stock filmstrips (frames of their own size, `numFrames` = count, <= 12288 px).
+      `saustin2010/vst_instruments`' patch to `tools/shadow_skin.py`. Done offline 2026-10-07 (device check pending):
+      `banks=`, `ns=`/`vs=`/`bw=` on knobs and sliders. Still to do: `lay=side` knobs, `ns=0`/`bw=` on toggles, `sh=`
+      on segments, sliders and meters as stock filmstrips (frames of their own size, `numFrames` = count, <= 12288 px).
 - [ ] **Skin checker.** A `check_skin.py`-style pass over the built `TUI.json`/`Q-Links.json` (wrong bindings,
       Q-Links off their page, overlapping touch boxes, boxes past 1280x628, option-count mismatches), run by
       `tools/test_port.sh`.

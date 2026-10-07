@@ -88,10 +88,11 @@ lists VST programs; engine calls need one-at-a-time locking per instance.
 
 Builder (`tools/shadow_skin.py`), all in the vst_instruments patch and so already written once:
 
-1. `banks="A|B"`: a control or art line only on some Q-Link sub-pages.
-2. `ns=` / `vs=` per knob, slider and readout (name/value px), `ink=` roles on readouts, `box=no` readouts.
-   Covers most of what Liminal's `skin_post.py` does by hand.
-3. `bw=` touch-box width for close neighbours; `lay=side` knob (picture left, big value right; step cells).
+1. `banks="A|B"`: a control or art line only on some Q-Link sub-pages. **Done 2026-10-07 (offline).**
+2. `ns=` / `vs=` per knob and slider (name/value px). **Done 2026-10-07 (offline).** Readouts already have
+   `tsize=`/`tcolor=`/`box=0`. Covers most of what Liminal's `skin_post.py` does by hand.
+3. `bw=` touch-box width for close neighbours (**done for knobs and sliders, 2026-10-07**); `lay=side` knob
+   (picture left, big value right; step cells).
 4. Sliders and display meters laid out as stock filmstrips (frames of the widget's own size, `numFrames` = count,
    strips under 12288 px).
 5. `sh=` on `enum_h`/`enum_v`.
