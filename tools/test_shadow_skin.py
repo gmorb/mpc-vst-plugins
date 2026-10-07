@@ -171,6 +171,27 @@ class BuildAttrs(unittest.TestCase):
         self.assertEqual(value["componentData"]["data"]["textStyle"]["font"]["height"], 40.0)
         self.assertEqual(int(value["bounds"]["bounds"].split()[2]), 90)
 
+    def test_side_knob_puts_the_value_beside_the_picture(self):
+        defs, _ = self.build("[tab T]\nknob cx=300 cy=300 r=20 key=a lay=side bw=240 bh=60 vs=40\n")
+        kd = self.knob_def(defs, "shKnobSide")
+        names = [c["componentData"]["name"] for c in kd["componentsData"]]
+        self.assertEqual(names, ["Focus", "Knob", "Value"])
+        value = kd["componentsData"][2]
+        self.assertEqual(value["bounds"]["bounds"].split(), ["54", "0", "182", "60"])
+
+    def test_toggle_bw_and_no_name(self):
+        defs, _ = self.build("[tab T]\ntoggle cx=300 cy=300 key=a bw=70\ntoggle cx=500 cy=300 key=b ns=0\n")
+        tg = {k: v for k, v in defs.items() if k.startswith("shToggle")}
+        self.assertEqual(len(tg), 2)
+        nn = [v for k, v in tg.items() if "_ns0" in k][0]
+        self.assertNotIn("Name", [c["componentData"]["name"] for c in nn["componentsData"]])
+        narrow = [v for k, v in tg.items() if "_bw70" in k][0]
+        self.assertEqual(narrow["componentsData"][0]["bounds"]["bounds"].split()[2], "70")
+
+    def test_enum_v_honours_sh(self):
+        w = {"kind": "enum_v", "options": ["A", "B"], "cx": 100, "cy": 100, "sh": 44}
+        self.assertEqual({r[3] for r in shadow_skin.seg_rects(w)}, {44})
+
     def test_plain_knob_unchanged(self):
         defs, _ = self.build("[tab T]\nknob cx=200 cy=300 r=30 key=a\n")
         self.assertEqual([k for k in defs if k.startswith("shKnob")], ["shKnob30_ls%g" % shadow_skin.LABEL_SCALE])

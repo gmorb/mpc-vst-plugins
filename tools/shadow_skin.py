@@ -59,7 +59,10 @@ Any widget line (frames and art too) can carry `banks="NAME|NAME"`: it is only o
 (the tab's `qlinks` titles), so a sub-page can show and touch-edit what its Q-Links edit; its baked parts become their
 own image on those sub-pages.
 Knobs and sliders take `ns=<px>` / `vs=<px>` (name / value text size; ns=0: no name) and `bw=<px>` (touch box and
-text width, e.g. narrower than the usual 130 px where neighbours sit close and their boxes would overlap).
+text width, e.g. narrower than the usual 130 px where neighbours sit close and their boxes would overlap). `knob ... lay=side [bw= bh= vs=]`: the
+knob's picture at the left of a bw x bh box (default 4 knobs wide), its value (vs= px, default 30) in the rest, no name.
+Toggles take
+`bw=` and `ns=0` too (other ns= sizes are not used on toggles); enum_v takes `sh=` like enum_h.
 Any widget line (frames too) can end in `when=<param>:<option>` (option name or index): it is shown only
 while that option parameter is at that option (MPC's IndexedEnabling), so a tab can swap control sets per
 mode. Its baked parts (frame, title, text boxes, group labels) go into a per-mode image over the background.
@@ -168,7 +171,7 @@ def parse_layout(path):
     return tabs, top
 
 
-INT_KEYS = ("x", "y", "w", "h", "cx", "cy", "r", "sw", "sh", "rows", "cols", "th", "gap", "cw", "ns", "vs", "bw")
+INT_KEYS = ("x", "y", "w", "h", "cx", "cy", "r", "sw", "sh", "rows", "cols", "th", "gap", "cw", "ns", "vs", "bw", "bh")
 
 
 def parse_widget(line):
@@ -433,7 +436,7 @@ def qlink_for_slot(slot):
 def seg_rects(w):
     n = len(w["options"])
     if w["kind"] == "enum_v":
-        sw, sh, gap = w.get("sw") or 135, 30, 2   # respect the layout's sw= (like enum_h), else 135
+        sw, sh, gap = w.get("sw") or 135, w.get("sh") or 30, 2   # respect the layout's sw=/sh= (like enum_h), else 135 x 30
         y0 = w["cy"] - (n * (sh + gap)) // 2
         return [(w["cx"] - sw // 2, y0 + i * (sh + gap), sw, sh) for i in range(n)]
     sw, sh, gap = w.get("sw") or 117, w.get("sh") or 33, 2   # sw=/sh=: segment size
@@ -842,7 +845,25 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
             sfx = "_" + lid if lk else ""
             if lk:
                 looks[lid] = lk
-            if kind == "knob":
+            if kind == "knob" and w.get("lay") == "side":
+                # the knob's picture at the left of a bw x bh box, its value centred in the rest, no name: a big value
+                # dragged like a knob (a sequencer's step cells; after saustin2010/vst_instruments' Stevequencer)
+                r = w["r"]
+                s_ = 2 * r + 10
+                bw_, bh_ = w.get("bw") or 4 * s_, max(s_, w.get("bh") or s_)
+                radii.add((r, lid))
+                vs_ = float(w.get("vs") or 30)
+                key = "shKnobSide%d%s_v%d_%dx%d" % (r, sfx, vs_, bw_, bh_)
+                defs.setdefault(key, _local(key, [_action("Mouse Down", "Q-Link"),
+                                                  _action("Double Click", "Show Overlay", "knob overlay"),
+                                                  _action("Enter Pressed", "Show Overlay", "knob overlay")], [
+                    _focus(bw_, bh_),
+                    _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": "sh_knob_r%d%s.png" % (r, sfx),
+                                  "numFrames": ROT_FRAMES, "invert": False, "dragOrientation": "Vertical",
+                                  "handleName": "Data"}, _bounds(0, (bh_ - s_) // 2, s_, s_), "Knob"),
+                    _value_label(s_ + 4, 0, bw_ - s_ - 8, bh_, vs_, w.get("ink") or INK)]))
+                kids.append(_placed(key, name, i, w["cx"] - bw_ // 2, w["cy"] - bh_ // 2, bw_, bh_))
+            elif kind == "knob":
                 r = w["r"]
                 s, cw = 2 * r + 10, max(round(130 * LABEL_SCALE) if SCALE_NAMES else 130, 2 * r + 10)   # value label width; LFO knobs sit 138 px apart
                 if w.get("bw"):   # bw=: a narrower touch box (and name/value width) for close neighbours
@@ -881,28 +902,31 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 kids.append(_placed(key, name, i, w["cx"] - cw // 2, w["cy"] - s // 2, cw, ch))
             elif kind == "toggle" and lk:
                 tw, th = skin_assets.toggle_size(w, lk)
-                key = "shToggle_%s_%dx%d" % (lid, tw, th)
-                cw, ch = max(TOG_W(), tw + 10), th + 6 + NAME_H()
+                nn = w.get("ns") == 0   # ns=0: no name label, the box is just the picture
+                key = "shToggle_%s_%dx%d" % (lid, tw, th) + text_sfx(w, 0)
+                cw, ch = (tw, th) if nn else (max(w.get("bw") or TOG_W(), tw + 10), th + 6 + NAME_H())
                 if key not in defs:
                     img = "sh_tog_%s_%dx%d" % (lid, tw, th)
                     for on in (0, 1):
                         script += ["clear|" + under(), "ltog|200|300|%d|%d|%d|%s" % (on, tw, th, skin_assets.encode(lk)),
                                    "crop|%s|200|300|%d|%d" % (art("%s_%s" % (img, "on" if on else "off")), tw, th)]
                     defs[key] = _local(key, [_action("Mouse Down", "Q-Link"), _action("Enter Pressed", "Toggle Switch")],
-                                       [_focus(cw, ch), _button(img + "_on.png", img + "_off.png", 1, 1, tw, th, (cw - tw) // 2, 0),
-                                        _name_label(0, th + 4, cw, NAME_H(), NAME_FONT("toggle"), INK)])
+                                       [_focus(cw, ch), _button(img + "_on.png", img + "_off.png", 1, 1, tw, th, (cw - tw) // 2, 0)] +
+                                       ([] if nn else [_name_label(0, th + 4, cw, NAME_H(), NAME_FONT("toggle"), INK)]))
                 kids.append(_placed(key, name, i, w["cx"] - cw // 2, w["cy"] - th // 2, cw, ch))
             elif kind == "toggle":
-                cw = TOG_W()
-                key = "shToggle" + (("_ls%g" % LABEL_SCALE) if SCALE_NAMES and LABEL_SCALE != 1.0 else "")
+                cw = max(53, w.get("bw") or TOG_W())   # bw=: a narrower touch box (and name) for close neighbours
+                nn = w.get("ns") == 0   # ns=0: the pill alone, no name
+                cw, th_ = (53, 37) if nn else (cw, 38 + NAME_H())
+                key = "shToggle" + (("_ls%g" % LABEL_SCALE) if SCALE_NAMES and LABEL_SCALE != 1.0 else "") + text_sfx(w, 0)
                 if key not in defs:
                     for on in (0, 1):
                         script += ["clear|" + under(), "pill|100|100|%d" % on,
                                    "crop|%s|74|86|53|29" % art("sh_pill_%s" % ("on" if on else "off"))]
                     defs[key] = _local(key, [_action("Mouse Down", "Q-Link"), _action("Enter Pressed", "Toggle Switch")],
-                                       [_focus(cw, 38 + NAME_H()), _button("sh_pill_on.png", "sh_pill_off.png", 1, 1, 53, 29, (cw - 53) // 2, 4),
-                                        _name_label(0, 34, cw, NAME_H(), NAME_FONT("toggle"), INK)])
-                kids.append(_placed(key, name, i, w["cx"] - cw // 2, w["cy"] - 18, cw, 38 + NAME_H()))
+                                       [_focus(cw, th_), _button("sh_pill_on.png", "sh_pill_off.png", 1, 1, 53, 29, (cw - 53) // 2, 4)] +
+                                       ([] if nn else [_name_label(0, 34, cw, NAME_H(), NAME_FONT("toggle"), INK)]))
+                kids.append(_placed(key, name, i, w["cx"] - cw // 2, w["cy"] - 18, cw, th_))
             elif kind == "button":
                 x, y, bw, bh = button_rect(w, base_dir)
                 img = "sh_btn_%s_%s%s" % (w["key"], slug(w.get("label", "")), sfx)

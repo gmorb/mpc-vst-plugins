@@ -92,10 +92,10 @@ Builder (`tools/shadow_skin.py`), all in the vst_instruments patch and so alread
 2. `ns=` / `vs=` per knob and slider (name/value px). **Done 2026-10-07 (offline).** Readouts already have
    `tsize=`/`tcolor=`/`box=0`. Covers most of what Liminal's `skin_post.py` does by hand.
 3. `bw=` touch-box width for close neighbours (**done for knobs and sliders, 2026-10-07**); `lay=side` knob
-   (picture left, big value right; step cells).
+   (picture left, big value right; step cells). **All done 2026-10-07 (offline), toggles included.**
 4. Sliders and display meters laid out as stock filmstrips (frames of the widget's own size, `numFrames` = count,
    strips under 12288 px). **Done 2026-10-07 (offline).**
-5. `sh=` on `enum_h`/`enum_v`.
+5. `sh=` on `enum_h`/`enum_v`. **Done** (enum_h had it; enum_v 2026-10-07).
 6. A skin checker like `check_skin.py` (BIND/QLINK/TOUCH/EDGE/OPTS). **TOUCH/EDGE/QLINK done 2026-10-07**
    (`tools/skin_check.py`, run by `gen_vst.py`).
 

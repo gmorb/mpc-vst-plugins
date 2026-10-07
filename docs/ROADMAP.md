@@ -16,7 +16,8 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
 - [ ] **Builder features from other forks (docs/COMMUNITY_SKINS.md "Adoption list", 2026-10-07).** Port from
       `saustin2010/vst_instruments`' patch to `tools/shadow_skin.py`. Done offline 2026-10-07 (device check pending):
       `banks=`, `ns=`/`vs=`/`bw=` on knobs and sliders. Sliders and meters as stock filmstrips (frames of their own size, `numFrames` = count,
-      <= 12288 px) done 2026-10-07. Still to do: `lay=side` knobs, `ns=0`/`bw=` on toggles, `sh=` on segments.
+      <= 12288 px) done 2026-10-07. `lay=side` knobs, `ns=0`/`bw=` on toggles and `sh=` on enum_v
+      followed the same day. All offline; check on a device.
 - [ ] **Skin checker: the rest.** `tools/skin_check.py` (2026-10-07) covers TOUCH / EDGE / QLINK and runs in
       `gen_vst.py`; still to add: Q-Links out of the layout's order, option-count mismatches in the built skin.
 - [ ] **VST programs and wrapper presets: device check.** vst.json `"programs"` / `"presets"` are in (2026-10-07, offline,

@@ -204,7 +204,9 @@ findings as `warning: skin:` lines. It complements the browser editor's layout c
 ## Text size and touch width per control (2026-10-07, offline)
 `knob` and `slider_v`/`slider_h` take `ns=<px>` (name text; `ns=0` drops the name), `vs=<px>` (value text) and
 `bw=<px>` (touch box and text width; default 130). Narrow `bw=` where neighbours sit closer than ~130 px, or MPC gives
-a touch to the wrong control. From `saustin2010/vst_instruments`' fork; not yet seen on a device.
+a touch to the wrong control. Toggles take `bw=` and `ns=0` (the switch alone); `enum_v` takes `sh=` like `enum_h`.
+`knob ... lay=side bw= bh= vs=` puts the knob's picture at the left of a bw x bh box and its value, large, in the rest
+(no name): a step cell you drag like a knob. From `saustin2010/vst_instruments`' fork; not yet seen on a device.
 
 ## Coming next
 Tracked in [ROADMAP.md](ROADMAP.md) ("Skin controls" and "Porting and tooling"), including a build-and-preview
