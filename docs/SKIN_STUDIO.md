@@ -197,14 +197,16 @@ MPC reads two maps from the skin's `Q-Links.json`:
 ## Built-skin check (2026-10-07)
 `tools/skin_check.py "<plugin folder>"` reads the built `TUI.json`/`Q-Links.json` and reports, per page: TOUCH (two
 controls' touch boxes overlap while both show: MPC gives the touch to one), EDGE (a box past 1280x628) and QLINK (a
-Q-Link on a parameter no control on that page shows). `gen_vst.py` runs it after every skin build and prints the
+Q-Link on a parameter no control on that page shows) and OPTS (a switch group missing some of its options). `gen_vst.py` runs it after every skin build and prints the
 findings as `warning: skin:` lines. It complements the browser editor's layout checks, and sees what the builder made
 (label widths, `when=` modes, `banks=` sub-pages).
 
 ## Text size and touch width per control (2026-10-07, offline)
 `knob` and `slider_v`/`slider_h` take `ns=<px>` (name text; `ns=0` drops the name), `vs=<px>` (value text) and
 `bw=<px>` (touch box and text width; default 130). Narrow `bw=` where neighbours sit closer than ~130 px, or MPC gives
-a touch to the wrong control. From `saustin2010/vst_instruments`' fork; not yet seen on a device.
+a touch to the wrong control. Toggles take `bw=` and `ns=0` (the switch alone); `enum_v` takes `sh=` like `enum_h`.
+`knob ... lay=side bw= bh= vs=` puts the knob's picture at the left of a bw x bh box and its value, large, in the rest
+(no name): a step cell you drag like a knob. From `saustin2010/vst_instruments`' fork; not yet seen on a device.
 
 ## Coming next
 Tracked in [ROADMAP.md](ROADMAP.md) ("Skin controls" and "Porting and tooling"), including a build-and-preview

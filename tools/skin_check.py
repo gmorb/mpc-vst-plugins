@@ -6,6 +6,8 @@ Reports, per page (tab / Q-Link sub-page):
          (knobs and sliders carry their name and value in the box; narrow them with bw=)
   EDGE   a control's box past the 1280 x 628 plugin area
   QLINK  a Q-Link on a parameter no control on that page is bound to (turning it changes something unseen)
+  OPTS   a switch group (option segments, a popup list) missing some of its options on a page
+(Q-Link order against the layout is not checked: the built skin doesn't carry the layout's order.)
 Controls shown in different modes (when=) or on different sub-pages (banks=) never overlap each other.
 gen_vst.py runs it after every skin build and prints the findings as warnings. Idea from
 saustin2010/vst_instruments' check_skin.py (docs/COMMUNITY_SKINS.md)."""
@@ -69,6 +71,18 @@ def check(skin_dir):
                 oy = min(r1[1] + r1[3], r2[1] + r2[3]) - max(r1[1], r2[1])
                 if ox > MIN_OVERLAP and oy > MIN_OVERLAP and p1 != p2:
                     out.append("%s: TOUCH %s and %s overlap by %gx%g px" % (where, n1, n2, ox, oy))
+        groups = {}   # (param, visibility) -> (options in the group, button ids present)
+        for c in kids:
+            p = _param(c)
+            for sub in defs.get(c["componentData"]["type"], {}).get("componentsData", []):
+                d = sub["componentData"]
+                if p is not None and d["type"] == "Button" and d["data"].get("numButtonsInGroup", 1) > 1:
+                    vis = tuple(sorted(c["bounds"].get("additionalInvalidatingHandles", [])))
+                    g = groups.setdefault((p, vis), [d["data"]["numButtonsInGroup"], set()])
+                    g[1].add(d["data"]["buttonId"])
+        for (p, _), (n, ids) in sorted(groups.items(), key=lambda x: (x[0][0], x[0][1])):
+            if ids != set(range(n)):
+                out.append("%s: OPTS  parameter %d shows options %s of 0..%d" % (where, p, sorted(ids), n - 1))
         bound = {p for _, p, _, _ in controls} | {_param(c) for c in kids}
         q = qpages.get((t.get("fnKeyIndex", 0) + 1, t.get("fnKeySubIndex", 0) + 1), {})
         for slot, p in sorted(q.items()):

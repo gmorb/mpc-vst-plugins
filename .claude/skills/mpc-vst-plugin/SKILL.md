@@ -145,7 +145,7 @@ Parameter entries feeding `gen_vst.py` (`tools/params.py` format) can carry:
   never a recreation of a manufacturer's proprietary font) overlays frame titles in that font via PIL after
   the PNGs are drawn; off by default, every other port keeps its current look.
 - Per control: `ns=`/`vs=` (name/value px, `ns=0` no name) and `bw=` (touch width) on knobs and sliders; `banks="A|B"`
-  on any line keeps it to those `qlinks` sub-pages (docs/SKIN_STUDIO.md; offline only so far).
+  on any line keeps it to those `qlinks` sub-pages; toggles take `bw=`/`ns=0`; `knob lay=side bw= bh= vs=` is a step cell (docs/SKIN_STUDIO.md; offline only so far).
 - `scale_names=1` in `layout.conf` makes the knob and toggle names MPC draws follow `label_scale` (21 px × it,
   toggle box grown to fit); without it they stay the fixed 15-17 px / 120 px box every existing skin has.
 - A `readout` or `list` line can style its live text: `tsize=`, `tcolor=`, `tweight=`, `talign=` (left|center|right),
@@ -173,6 +173,16 @@ Parameter entries feeding `gen_vst.py` (`tools/params.py` format) can carry:
   background thread: the bench harness has no pacing and races through blocks far faster than real time. For
   such a plugin, sample real cost live instead: `/proc/<pid>/task/<tid>/stat` deltas against `/proc/uptime`
   while actually playing it on-device.
+
+## Presets (MPC's PRESET menu)
+vst.json `"presets": "presets.json"` (the wrapper's own list) or `"programs": {"param": "<key>"}` (the engine's preset
+param) makes the plugin report VST programs; MPC lists them in the plugin header's PRESET menu. Details: docs/PORTING.md.
+The host test checks names, picking and the host redraw. A re-pick of the current program is ignored (JUCE does it at load).
+
+## MIDI control and the engine lock
+CC 20-35 drive the first page's Q-Links, NRPN n sets parameter n (vst.json `"cc"`/`"nrpn": false` to turn off; the
+CCs used never reach the engine). Every engine call is serialised per instance (`eng_set()` etc.): an engine needn't be
+thread-safe, but a slow `set_param` holds audio. Links need `-lpthread`. host_test covers both. Details: docs/NOTES.md.
 
 ## Design techniques (from community skins; docs/COMMUNITY_SKINS.md)
 - `"art": "html"` + `art_css` + a full `theme_*` palette; one script-made background `art` per tab with frames and

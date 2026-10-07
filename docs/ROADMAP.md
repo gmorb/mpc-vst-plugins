@@ -16,13 +16,19 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
 - [ ] **Builder features from other forks (docs/COMMUNITY_SKINS.md "Adoption list", 2026-10-07).** Port from
       `saustin2010/vst_instruments`' patch to `tools/shadow_skin.py`. Done offline 2026-10-07 (device check pending):
       `banks=`, `ns=`/`vs=`/`bw=` on knobs and sliders. Sliders and meters as stock filmstrips (frames of their own size, `numFrames` = count,
-      <= 12288 px) done 2026-10-07. Still to do: `lay=side` knobs, `ns=0`/`bw=` on toggles, `sh=` on segments.
+      <= 12288 px) done 2026-10-07. `lay=side` knobs, `ns=0`/`bw=` on toggles and `sh=` on enum_v
+      followed the same day. All offline; check on a device.
 - [ ] **Skin checker: the rest.** `tools/skin_check.py` (2026-10-07) covers TOUCH / EDGE / QLINK and runs in
-      `gen_vst.py`; still to add: Q-Links out of the layout's order, option-count mismatches in the built skin.
-- [ ] **VST programs and wrapper presets.** vst.json `"programs"` / `"presets"` so MPC's PRESET menu lists them
-      (reported working on a Live II by another fork, NOTES 2026-10-07).
-- [ ] **One engine call at a time.** A per-instance recursive mutex around engine calls in `wrapper/vst2_wrap.c`
-      (screen and audio threads both call the engine; NOTES 2026-10-07).
+      `gen_vst.py`; OPTS (incomplete switch groups) added the same day. Still to add: Q-Links out of the layout's order
+      (needs the layout next to the skin).
+- [ ] **VST programs and wrapper presets: device check.** vst.json `"programs"` / `"presets"` are in (2026-10-07, offline,
+      host-tested); device-checked 2026-10-07 on a Force: the PRESET menu lists and loads them (reload behaviour, re-pick and CC 20 not yet checked on a device). Not yet: programs whose count
+      changes at run time (user banks) or names stepped from an engine that can't name a preset without loading it.
+- [ ] **MIDI CC 20-35 / NRPN control: device check.** In the wrapper 2026-10-07 (offline, host-tested); the other fork saw
+      CC 20/21 from a sequencer move an instrument's controls on a Live II. Confirm with one of ours, and that MPC keeps
+      none of CC 20-35 for itself.
+- [ ] **One engine call at a time: device check.** Done offline 2026-10-07 (`eng_set()` etc. in `wrapper/vst2_wrap.c`, a
+      two-thread section in `tools/host_test.c`); measure the uncontended cost on a device with docs/BENCH.md.
 - [ ] **Engine-driven live updates need a new wrapper mechanism.** (Partly stale: `HAS_DISPLAY_REV` now polls an
       engine's `display_rev` and refreshes the host, NOTES "display_rev"; another fork measured that repainting
       costs MPC's screen thread a lot, NOTES 2026-10-07. Re-check what is left before working on this.) Confirmed on a Force 2026-09-25

@@ -1210,3 +1210,43 @@ needs a check on our devices before it becomes a rule. Survey of the techniques:
   (GETPLANE, GETFB, MAP_DUMB). The card number changed between boots (card0, then card1). Cf. `tools/drmgrab.c`.
 - **ALSA mirror ports.** MPC adds its own copy ("<client> <port>") of each new sequencer port on its client, which has
   a lower number, so a substring search by port name finds MPC's copy first. Match exactly, or by pid.
+
+## 2026-10-07: VST programs from the wrapper (offline; device-checked in part)
+`wrapper/vst2_wrap.c` now reports VST programs (`numPrograms`, `effSetProgram`/`effGetProgram`, `effGetProgramName`,
+`effGetProgramNameIndexed`) when vst.json has `"presets"` (a `presets.json` compiled into `params.h` by gen_vst.py) or
+`"programs": {"param": key}` (an engine preset parameter: one program per option or whole number). Another fork saw
+MPC's PRESET menu list and load such programs on a Live II ("reported by other forks" above). Behaviour, host-tested
+(`tools/host_test.c` program checks, ASan) on `poc/steptest` variants:
+- Picking a preset sets each listed parameter through the engine's `set_param`, in file order, and reports each one to
+  the host from `housekeeping()` (never from inside the host's call), plus `audioMasterUpdateDisplay`.
+- Picking the program that is already current does nothing, so a host re-selecting program 0 at load can't overwrite
+  a restored chunk. The picked preset index isn't in the engine's state: after a project reload the menu shows the
+  first preset's name (the sound is restored from the chunk as before).
+- `"programs"` on a `"display": "int"` param names program n by `get_param("<key>:<n>")`, else "<Name> <n>".
+- Device check (2026-10-07, Force, MPC OS version not noted; test port = `poc/steptest` copy with `presets.json` of Init/Bright/Dark
+  and a 3-control layout): MPC's PRESET menu lists the presets, and picking Bright, Dark and Init moves MODE, NUM and CONT
+  on screen (user-observed). **Not checked on the device:** a tweak surviving a project reload and the name the menu then
+  shows, re-picking the current preset, and CC 20 moving the first Q-Link (the MIDI CC section stays offline only).
+
+## 2026-10-07: one engine call at a time per instance (offline)
+`wrapper/vst2_wrap.c` now wraps every engine call but create/destroy (`eng_set`, `eng_get`, `eng_midi`, `eng_render`,
+`eng_process`) in a per-instance recursive, priority-inheriting mutex, never held while calling the host. Why: the
+JUCE host calls parameters, chunks and displays on its message thread while audio runs on another, and another fork
+saw an engine that assumed one caller abort MPC on a Live II ("reported by other forks" above). `tools/host_test.c`
+now runs 3000 screen-side sets/reads/display reads on a second thread while rendering (ASan); every `poc/` port with
+a test passes. Links need `-lpthread` (added to `build_port.sh` and `test_port.sh`): on the device toolchain's glibc
+2.31, `pthread_mutexattr_setprotocol` is in libpthread. Not yet run on a device; the uncontended cost (one atomic
+operation per call) should be checked with docs/BENCH.md.
+
+## 2026-10-07: MIDI CC 20-35 and NRPN control in the wrapper (offline)
+After the other fork's Live II finding ("reported by other forks": CC 20/21 from a sequencer moved an instrument's
+controls through the track's MIDI input; MIDI-learning from a plugin's port froze MPC there):
+- gen_vst.py writes `PLUG_CC[16]` from the first tab's first `qlinks` line (column 1 top to bottom = CC 20-23, column 2 =
+  24-27, ...; `-`, triggers and text readouts get none). `effProcessEvents` sets the parameter as a touch would (option
+  lists and whole numbers round to the nearest step) and keeps the CC from the engine.
+- NRPN n (CC 99 MSB / 98 LSB) with its value on CC 6 (7-bit) and CC 38 (14-bit with the last CC 6) sets parameter n on
+  any page; CC 101/100 (an RPN) deselects it and goes to the engine as before.
+- The host hears of CC-driven changes from `housekeeping()` at most every 1024 frames, so the screen follows without a
+  flood. On by default; vst.json `"cc": false` / `"nrpn": false` turn each off (an engine that reads those CCs itself).
+host_test checks a CC 20 move and its report, and an NRPN set, on any parameter that keeps a value set from outside
+(engine-driven displays don't). Not yet run on a device.
