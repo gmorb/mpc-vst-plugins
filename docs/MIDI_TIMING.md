@@ -57,5 +57,5 @@ thread; that was removed before release).
 - Events go out `snd_seq_event_output_direct` at the start of a block: block resolution (~2.9 ms at 128 frames), measured
   jitter 0.15-0.5 ms (sd). Ratchets and note lengths shorter than a block are quantized to blocks.
 - What the Force does after the ALSA port (MIDI routing into the target track) is not visible from the plugin. A user
-  report of drift that the plugin's own numbers cannot show points there; see the MIDI-clock/MTC remark in the report
-  quoted in `mpc-vst-acid` PR #8.
+  report of drift that the plugin's own numbers cannot show points there. One Discord report said MPC's own arpeggiator
+  stays in time when driven by MIDI Time Code but not by MIDI clock (unverified here).
