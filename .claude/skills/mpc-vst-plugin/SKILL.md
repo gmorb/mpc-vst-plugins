@@ -89,6 +89,11 @@ MPC OS ignores VST MIDI output (`audioMasterProcessEvents` goes nowhere). Instea
 the plugin (`poc/midiport.c`: `snd_seq_open` → `snd_seq_create_simple_port` READ|SUBS_READ → `snd_seq_event_output_direct`,
 link `-lasound`; build needs `apt install libasound2-dev` in the arm32v7/gcc:11-bullseye container). MPC hot-detects the
 port with no restart; the user enables Track on it in Preferences → MIDI. Sync from `audioMasterGetTime` ppqPos/tempo.
+**Step timing (read `docs/MIDI_TIMING.md`):** derive every step from `ppqPos` (16th `k` at `k/4`, swing as a ppq delay on odd
+`k`, re-cover the straddling block on a loop wrap, resync on a jump, first boundary at/after the playhead is step 0). Do **not**
+synthesize 24-PPQN pulses and count them: the phase becomes relative and a lost pulse, mid-song start or loop wrap shifts it
+permanently. Never pace from the wall clock. Test with a block-misaligned loop and a mid-song start in `host_test`; keep file
+I/O out of `processReplacing`. Reference: `mpc-vst-acid` `feed_transport()`.
 Name ports plainly (e.g. client "<Plugin>", port "MIDI Out"): no "(Mockba)" suffix; the user wants MockbaMod
 references kept out of mpc-vst.
 

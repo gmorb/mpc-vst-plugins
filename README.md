@@ -157,6 +157,7 @@ What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 - [docs/NOTES.md](docs/NOTES.md): everything verified on hardware, with dates, plus open issues. The source of truth.
 - [docs/PORTING.md](docs/PORTING.md): the checklist for turning an engine or app into a plugin.
+- [docs/MIDI_TIMING.md](docs/MIDI_TIMING.md): how a sequencer/arp plugin should time its steps against MPC's transport.
 - [docs/SKIN_STUDIO.md](docs/SKIN_STUDIO.md): laying out and previewing pages.
 - [docs/BENCH.md](docs/BENCH.md): the on-device CPU check. [docs/RELEASING.md](docs/RELEASING.md): release zips.
 - [docs/ROADMAP.md](docs/ROADMAP.md): repo features still to do.

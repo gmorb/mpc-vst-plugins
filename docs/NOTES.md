@@ -481,10 +481,11 @@ build's CC table, kept in sync by hand) since that pipeline only cares about the
 momentary shape, not the real host API.
 - **Clock, without a physical MIDI cable:** the standalone build derives BPM/transport from real 0xF8/
   0xFA/0xFC MIDI clock (EMA of inter-pulse interval). A VST host hands this over cleanly instead:
-  `audioMasterGetTime` gives exact `tempo` and `ppqPos` already, so the wrapper synthesizes the same
-  24-PPQN clock byte stream from the ppqPos delta each block (`ceil(last/step)*step .. end`, step =
-  1/24 quarter note) and feeds it to the engine's own `process_midi()` unchanged -- no core changes
-  needed.
+  `audioMasterGetTime` gives exact `tempo` and `ppqPos`. The first port synthesized the same 24-PPQN clock byte
+  stream from the ppqPos delta each block and let the core count pulses; **that is superseded (2026-10-08):
+  pulse counting keeps the step phase relative, so a lost pulse, a mid-song start or a loop wrap shifts it
+  for good. Place each step from `ppqPos` instead -- see docs/MIDI_TIMING.md** (mpc-vst-acid PR #8 does, unreleased as of 2026-10-08; the core
+  only needed a 0xF9 "step boundary" message and the wrapper owns the grid).
 - **Host API with no instance argument** (`host_api_v1_t.get_bpm`/`get_clock_status`, acid_core.h): fine
   to leave process-wide (one set of atomics, `move_midi_fx_init` called once), since MPC has one shared
   transport for every plugin instance anyway -- matches host_shim.cpp's own simplification.
