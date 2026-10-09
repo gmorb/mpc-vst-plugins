@@ -80,6 +80,6 @@ replaces. `python3 tools/catalog_issues.py --dry-run` shows the issues the night
 `python3 tools/catalog_site.py` then writes the site to `catalog/dist/site/` (open `index.html`).
 
 ## Guide pages
-The site's Install, Build, Workflow and Add yours pages are the Markdown files in `catalog/pages/`. Edit one and
+The site's Install, Build and Workflow pages are the Markdown files in `catalog/pages/`. Edit one and
 the next site build publishes it. A page starts with front matter (`title`, `nav` for the menu label, `order`,
 `summary`); a new file is added to the menu automatically. The Markdown subset is described in `tools/catalog_md.py`.
