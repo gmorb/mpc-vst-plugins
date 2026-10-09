@@ -143,6 +143,12 @@ text { font-family: var(--font); font-weight: 600; }
 .look-led-off { fill: #3a3a38; }
 .look-lbody { fill: #1d1e20; stroke: #070708; stroke-width: 1; }
 .look-lline { stroke: #f4f4f1; stroke-linecap: round; }
+/* knob look=waldorf: tapered charcoal stem, bevelled top, lighter inset, turning notch; per-size colours via [data-r] */
+.look-wside { fill: #3d3d40; }
+.look-wshade { fill: url(#wside-linear); }
+.look-wtop { fill: #2c2c2f; stroke: #18181a; stroke-width: 0.8; }
+.look-winset { fill: #8d8d92; stroke: #4a4a4e; stroke-width: 0.8; }
+.look-wnotch { stroke: #26262a; stroke-linecap: round; }
 /* knob look=cap: the theme's knob colours */
 .look-cap-ring { fill: var(--knob-ring); filter: var(--shadow); }
 .look-cap-top { fill: var(--knob-dot); }
