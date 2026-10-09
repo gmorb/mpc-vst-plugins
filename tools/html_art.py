@@ -78,11 +78,11 @@ DEFS = """<defs>
 <radialGradient id="bake-radial" cx="0.38" cy="0.32" r="0.8">
  <stop offset="0" stop-color="#7a4a2e"/><stop offset="0.4" stop-color="#3a1e10"/><stop offset="1" stop-color="#140803"/>
 </radialGradient>
-<linearGradient id="wside-linear" x1="0" y1="0" x2="1" y2="0">
- <stop offset="0" stop-color="#000" stop-opacity="0.45"/><stop offset="0.3" stop-color="#fff" stop-opacity="0.16"/><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.5"/>
-</linearGradient>
-<radialGradient id="winset-radial" cx="0.4" cy="0.35" r="0.8">
- <stop offset="0" stop-color="#fff" stop-opacity="0.35"/><stop offset="1" stop-color="#000" stop-opacity="0.25"/>
+<radialGradient id="wside-radial" cx="0.38" cy="0.32" r="0.85">
+ <stop offset="0" stop-color="#fff" stop-opacity="0.22"/><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/>
+</radialGradient>
+<radialGradient id="winset-radial" cx="0.4" cy="0.33" r="0.8">
+ <stop offset="0" stop-color="#fff" stop-opacity="0.38"/><stop offset="1" stop-color="#000" stop-opacity="0.28"/>
 </radialGradient>
 <radialGradient id="dome-radial" cx="0.38" cy="0.32" r="0.8">
  <stop offset="0" stop-color="#6a6c70"/><stop offset="0.35" stop-color="#2c2d30"/><stop offset="1" stop-color="#050506"/>
@@ -298,27 +298,20 @@ def knob_ledring(cx, cy, r, a):
 
 
 def knob_waldorf(cx, cy, r, a):
-    """A tapered, waisted stem seen from above-front (the Waldorf Microwave knob): a charcoal side wall, a flat top with a bevel ring,
-    a lighter inset disc and a small notch that turns. Drawn inside r so a value arc sits outside it. Recolour .look-wside, .look-wtop,
-    .look-winset per size with the data-r attribute (e.g. .look-wside[data-r="27"] for a red key knob)."""
-    R = r * 0.88
-    ky = 0.7                       # the top's squash (tilt)
-    h = R * 0.85                   # the stem's visible height
-    ct, cb = cy - h * 0.45, cy + h * 0.55
-    Rt, Rb = R * 0.74, R
-    Rw = Rt * 0.8
-    side = ('M%g,%g C%g,%g %g,%g %g,%g A%g,%g 0 0 0 %g,%g C%g,%g %g,%g %g,%g Z' % (
-        cx - Rt, ct, cx - Rw, ct + h * 0.42, cx - Rw * 1.02, cb - h * 0.34, cx - Rb, cb, Rb, Rb * ky, cx + Rb, cb,
-        cx + Rw * 1.02, cb - h * 0.34, cx + Rw, ct + h * 0.42, cx + Rt, ct))
-    tilt = lambda body: '<g transform="translate(%g %g) scale(1 %g)">%s</g>' % (cx, ct, ky, body)
-    turn = '<g transform="translate(%g %g) scale(1 %g) rotate(%.2f)">%%s</g>' % (cx, ct, ky, a)
-    return ('<ellipse class="look-hshadow" cx="%g" cy="%g" rx="%g" ry="%g"/>' % (cx + Rb * 0.08, cb + Rb * 0.1, Rb * 1.05, Rb * ky * 1.05) +
-            '<path class="look-wside" data-r="%d" d="%s"/>' % (round(r), side) +
-            '<path class="look-wshade" d="%s"/>' % side +
-            tilt('<circle class="look-wtop" data-r="%d" cx="0" cy="0" r="%g"/>' % (round(r), Rt)) +
-            tilt('<circle class="look-winset" data-r="%d" cx="0" cy="0" r="%g"/>' % (round(r), Rt * 0.8)) +
-            turn % ('<line class="look-wnotch" x1="0" y1="%g" x2="0" y2="%g" style="stroke-width:%g"/>' % (-Rt * 0.5, -Rt * 0.74, max(1.8, r / 11))) +
-            '<ellipse class="look-hspec" cx="%g" cy="%g" rx="%g" ry="%g"/>' % (cx - Rt * 0.22, ct - Rt * ky * 0.3, Rt * 0.34, Rt * ky * 0.14))
+    """A tapered Waldorf Microwave knob seen from straight above: a wide stem base in shade, a bevel ring, a flat top with a lighter
+    inset disc, a soft highlight and a small turning notch. Drawn inside r so a value arc sits outside it. Recolour per size with
+    the data-r attribute (e.g. .look-wside[data-r="27"] for a red key knob)."""
+    R = r * 0.92
+    return ('<ellipse class="look-hshadow" cx="%g" cy="%g" rx="%g" ry="%g"/>' % (cx + R * 0.06, cy + R * 0.14, R * 1.02, R) +
+            '<circle class="look-wside" data-r="%d" cx="%g" cy="%g" r="%g"/>' % (round(r), cx, cy, R) +
+            '<circle class="look-wshade" cx="%g" cy="%g" r="%g"/>' % (cx, cy, R) +
+            '<circle class="look-wtop" data-r="%d" cx="%g" cy="%g" r="%g"/>' % (round(r), cx, cy, R * 0.78) +
+            '<circle class="look-wbevel" cx="%g" cy="%g" r="%g"/>' % (cx, cy, R * 0.66) +
+            '<circle class="look-winset" data-r="%d" cx="%g" cy="%g" r="%g"/>' % (round(r), cx, cy, R * 0.6) +
+            _turn(a, cx, cy, '<line class="look-wnotch" x1="%g" y1="%g" x2="%g" y2="%g" style="stroke-width:%g"/>'
+                  % (cx, cy - R * 0.22, cx, cy - R * 0.5, max(2.0, r / 10))) +
+            '<ellipse class="look-hspec" cx="%g" cy="%g" rx="%g" ry="%g" transform="rotate(-35 %g %g)"/>' % (
+                cx - R * 0.22, cy - R * 0.3, R * 0.26, R * 0.1, cx - R * 0.22, cy - R * 0.3))
 
 
 KNOB_LOOKS = {"moog": knob_moog, "chicken": knob_chicken, "metal": knob_metal, "cap": knob_cap, "prophet": knob_prophet,
