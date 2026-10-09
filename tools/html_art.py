@@ -297,8 +297,8 @@ def knob_ledring(cx, cy, r, a):
             _spec(cx, cy, R, -0.25, -0.4, 0.3, 0.12, False))
 
 
-def knob_waldorf(cx, cy, r, a):
-    """A tapered Waldorf Microwave knob seen from straight above: a wide stem base in shade, a bevel ring, a flat top with a lighter
+def knob_taper(cx, cy, r, a):
+    """A tapered, waisted-stem knob seen from straight above: a wide stem base in shade, a bevel ring, a flat top with a lighter
     inset disc, a soft highlight and a small turning notch. Drawn inside r so a value arc sits outside it. Recolour per size with
     the data-r attribute (e.g. .look-wside[data-r="27"] for a red key knob)."""
     R = r * 0.92
@@ -316,8 +316,8 @@ def knob_waldorf(cx, cy, r, a):
 
 KNOB_LOOKS = {"moog": knob_moog, "chicken": knob_chicken, "metal": knob_metal, "cap": knob_cap, "prophet": knob_prophet,
               "prophet3d": knob_prophet3d, "hardware": knob_hardware, "chrome": knob_chrome,
-              "bakelite": knob_bakelite, "davies": knob_davies, "rubber": knob_rubber, "ledring": knob_ledring, "waldorf": knob_waldorf}
-ARC_LOOKS = ("prophet", "prophet3d", "waldorf")     # looks that keep the value arc round the knob (the theme's knob-track / knob-arc)
+              "bakelite": knob_bakelite, "davies": knob_davies, "rubber": knob_rubber, "ledring": knob_ledring, "taper": knob_taper}
+ARC_LOOKS = ("prophet", "prophet3d", "taper")     # looks that keep the value arc round the knob (the theme's knob-track / knob-arc)
 
 
 def fader_track(x, y, w, h, vert, th):
