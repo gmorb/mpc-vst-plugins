@@ -62,6 +62,10 @@ installer. What the catalog holds instead of a download:
 (bench verdict), `requires` (firmware/MockbaMod notes), `source_repo`, `license`, `param_compat` (the X in X.Y.Z:
 bumping it breaks saved projects), `sha256` of every file. `INSTALL.md` stays for humans.
 
+### Gen2 (aarch64)
+A version may also have a `*-mpc-aarch64.zip` on the same release (arch `aarch64`, same id/uid/version). It is listed under the same
+registry entry as `versions[].assets.aarch64` with `gen2: true`; `url`/`sha256` stay the armv7 asset. `catalog.tsv` carries the aarch64 zip in three trailing columns (size, sha256, url). See [GEN2.md](GEN2.md).
+
 ### Generated `catalog.json`
 Per plugin (`distribution: release`): registry fields + `versions[]` (newest first, last N kept): `version`, `date`, `url`, `size`, `sha256`,
 `channel` (stable, or beta for GitHub prereleases), `notes` (release body), `param_compat`, `yanked`,
@@ -148,7 +152,7 @@ here first and move to its own repo (recommended, for community ownership) once 
       with a shared menu; checked in headless Chromium at desktop and phone width.
 - [x] (2026-09-29; live, `feed.xml` and `catalog.tsv` both served, checked 2026-10-02) Atom feed `feed.xml`; "Tested on" from optional `tested.json` in the plugin repo; contributor docs in `catalog/README.md`.
 - [x] (2026-10-03) `catalog/patches.json`, the device patches the installer app lists in its read-only step 7, is validated by `tools/patch_check.py` and published by `tools/catalog_site.py` next to `catalog.json` (`docs/PATCHES.md`).
-- [x] (2026-10-09, offline: browser-checked at desktop and phone width, not yet published) The catalog page has tabs: Plugins (filters and grid as before), Device patches (the `patches.html` cards) and
+- [x] (2026-10-09, offline: browser-checked at desktop and phone width, not yet published) The catalog page has tabs: Instruments, Effects and Addins (2026-10-10: the old single Plugins tab split by kind; they share the filter bar and grid, a bundle shows under each kind it installs, old `#tab=plugins` links open Instruments), Device patches (the `patches.html` cards) and
       Companion apps (`catalog/apps.json`, `tools/app_check.py`; issue #232, MPC Link first). The tab is in the URL hash (`#tab=apps`). The site is named "Open MPC - Plugin Catalog" and the footer links the Discord.
 - [x] (2026-10-09, tested offline against MPC Link v0.4.0 and a fake GitHub; the first nightly run is unverified) Companion app downloads are read from each app's newest stable GitHub release by `tools/app_resolve.py` (`assets` rules in `catalog/apps.json`), run by `catalog.yml`; pinned `downloads` are the fallback.
 - [ ] Announce to the community; collect what people actually ask for before building Phase 4.
