@@ -27,6 +27,14 @@ checksums go in the entry.
 An addin (a library MPC loads when it starts, through `LD_PRELOAD`) is listed the same way, with `"kind": "addin"` in its
 entry. Package it with `tools/release_addin.py` instead of `release.py`: see `docs/ADDINS.md`.
 
+## Companion apps
+A desktop tool that works with a standalone MPC but is not a plugin (for example MPC Link) is listed on the site's **Companion apps**
+tab from `catalog/apps.json`, not from `catalog/plugins/`. Open a PR adding one object to `apps`: `id`, `title`, `summary`, `author`,
+`license` (open source), `repo` (`owner/name`), `release` (https link to the release page), `platforms` (`macos`, `windows`, `linux`),
+and, recommended, `downloads` (`{platform, label, url, sha256}` per release asset, pinned to that release; `gh api repos/<repo>/releases/tags/<tag>`
+shows each asset's digest), plus optional `version`, `needs` (list) and `tested` (`{device, os}`). `python3 tools/app_check.py` checks the file.
+Nothing is installed on the device by the catalog or the installer app: the card only links to your release. Update `downloads` when you release.
+
 ## If your plugin can't publish a zip: build-yourself
 Some ports compile the user's own firmware into the plugin (for example a DSP statically recompiled from an Elektron OS
 file, with ROM samples), so the built `.so` and installer zip are firmware-derived and must never be published or shared.
@@ -72,6 +80,6 @@ replaces. `python3 tools/catalog_issues.py --dry-run` shows the issues the night
 `python3 tools/catalog_site.py` then writes the site to `catalog/dist/site/` (open `index.html`).
 
 ## Guide pages
-The site's Install, Build, Workflow and Add yours pages are the Markdown files in `catalog/pages/`. Edit one and
+The site's Install, Build and Workflow pages are the Markdown files in `catalog/pages/`. Edit one and
 the next site build publishes it. A page starts with front matter (`title`, `nav` for the menu label, `order`,
 `summary`); a new file is added to the menu automatically. The Markdown subset is described in `tools/catalog_md.py`.

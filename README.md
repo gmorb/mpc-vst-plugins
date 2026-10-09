@@ -13,10 +13,10 @@ an installer app, and the tools to build, test and release your own.
 
 ## Plugin catalog
 
-**[MPC OS Plugin Catalog](https://sd88me.github.io/mpc-vst-plugins/)**: one browsable list of the community's VST2
+**[Open MPC - Plugin Catalog](https://sd88me.github.io/mpc-vst-plugins/)**: one browsable list of the community's VST2
 plugins for MPC OS, with each plugin's current version, license, source link and a checksummed download.
 
-[![The MPC OS Plugin Catalog home page](docs/img/catalog-home.png)](https://sd88me.github.io/mpc-vst-plugins/)
+[![The Open MPC - Plugin Catalog home page](docs/img/catalog-home.png)](https://sd88me.github.io/mpc-vst-plugins/)
 
 - **Find a plugin.** Search, filter by kind, style, developer, license or distribution, and sort by recently updated or
   most downloaded. Every version shows its date and SHA-256, and what it was tested on. There is an Atom feed
@@ -30,7 +30,7 @@ plugins for MPC OS, with each plugin's current version, license, source link and
 - **Guides on the site:** [install a downloaded plugin](https://sd88me.github.io/mpc-vst-plugins/install.html),
   [build a plugin](https://sd88me.github.io/mpc-vst-plugins/build.html), the
   [release workflow](https://sd88me.github.io/mpc-vst-plugins/workflow.html) and
-  [how to get yours listed](https://sd88me.github.io/mpc-vst-plugins/add.html).
+  [how to get yours listed](https://sd88me.github.io/mpc-vst-plugins/workflow.html#list-it-in-the-catalog).
 - **Get your plugin listed.** Publish a GitHub release built with `tools/release.py` (or the reusable
   `vst-release.yml` workflow), then open a PR adding one small file, `catalog/plugins/<id>.json`. After that new
   releases appear on their own: the catalog reads your releases every night and checks each zip. Open-source licenses,

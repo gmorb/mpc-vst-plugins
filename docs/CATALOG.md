@@ -144,10 +144,12 @@ here first and move to its own repo (recommended, for community ownership) once 
 ### Phase 3: The website
 - [x] `tools/catalog_site.py` generates the site from `catalog.json`; `catalog.yml` deploys with Pages on main (2026-09-29; checked in headless Chromium; Pages deploy live at https://sd88me.github.io/mpc-vst-plugins/).
 - [x] List with search, filters (kind, style, developer, license, MPC OS 2.x / 3.x, beta) and sorting (updated, downloads, name, developer, kind), state kept in the URL hash; plugin page with history, install steps, checksum, source link.
-- [x] Guide pages Install, Build, Workflow and Add yours (2026-09-29): Markdown in `catalog/pages/*.md`, rendered by `tools/catalog_site.py`
+- [x] Guide pages Install, Build and Workflow (Add yours was merged into Workflow on 2026-10-09; add.html redirects) (2026-09-29): Markdown in `catalog/pages/*.md`, rendered by `tools/catalog_site.py`
       with a shared menu; checked in headless Chromium at desktop and phone width.
 - [x] (2026-09-29; live, `feed.xml` and `catalog.tsv` both served, checked 2026-10-02) Atom feed `feed.xml`; "Tested on" from optional `tested.json` in the plugin repo; contributor docs in `catalog/README.md`.
 - [x] (2026-10-03) `catalog/patches.json`, the device patches the installer app lists in its read-only step 7, is validated by `tools/patch_check.py` and published by `tools/catalog_site.py` next to `catalog.json` (`docs/PATCHES.md`).
+- [x] (2026-10-09, offline: browser-checked at desktop and phone width, not yet published) The catalog page has tabs: Plugins (filters and grid as before), Device patches (the `patches.html` cards) and
+      Companion apps (`catalog/apps.json`, `tools/app_check.py`; issue #232, MPC Link first). The tab is in the URL hash (`#tab=apps`). The site is named "Open MPC - Plugin Catalog" and the footer links the Discord.
 - [ ] Announce to the community; collect what people actually ask for before building Phase 4.
 
 ### Distribution: build-yourself (2026-09-29)

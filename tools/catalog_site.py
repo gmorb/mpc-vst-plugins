@@ -79,6 +79,33 @@ def patch_pages(doc, root):
     return pages
 
 
+PLATFORM_NAMES = {"macos": "macOS", "windows": "Windows", "linux": "Linux"}
+
+
+def app_cards(doc):
+    """Cards for catalog/apps.json (companion apps: desktop tools, not plugins). Not installed from the device or the installer app."""
+    e = lambda x: html_escape(str(x), quote=True)
+    cards = []
+    for a in doc["apps"]:
+        tags = ['<span class="tag">companion app</span>', '<span class="tag">%s</span>' % e(a["license"])] + \
+               ['<span class="tag">%s</span>' % e(PLATFORM_NAMES[p]) for p in a["platforms"]]
+        rows = [("Version", e(a["version"])) if a.get("version") else None,
+                ("Tested", e("%s, %s" % (a["tested"]["device"], a["tested"]["os"]))) if a.get("tested") else None,
+                ("Needs", e(", ".join(a["needs"]))) if a.get("needs") else None,
+                ("Source", '<a href="https://github.com/%s">%s</a>' % (e(a["repo"]), e(a["repo"])))]
+        dl = "".join("<dt>%s</dt><dd>%s</dd>" % r for r in rows if r)
+        files = a.get("downloads") or []
+        btns = "".join('<a class="btn-l primary" href="%s">%s</a>' % (e(f["url"]), e(f["label"])) for f in files) or \
+               '<a class="btn-l primary" href="%s">Download from GitHub</a>' % e(a["release"])
+        sums = ('<details class="vers"><summary>Checksums (sha256)</summary><table>%s</table></details>' %
+                "".join("<tr><td>%s</td><td><code>%s</code></td></tr>" % (e(f["label"]), e(f["sha256"])) for f in files)) if files else ""
+        cards.append('<article class="card" data-platforms="%s" data-text="%s"><header><div><h2>%s</h2><div class="by">by %s</div></div></header>'
+                     '<div class="tags">%s</div><p>%s</p><dl class="meta">%s</dl><div class="actions">%s<a class="btn-l" href="%s">Release page</a></div>%s</article>'
+                     % (e(" ".join(a["platforms"])), e(" ".join([a["title"], a["author"], a["summary"]]).lower()), e(a["title"]), e(a["author"]),
+                        "".join(tags), e(a["summary"]), dl, btns, e(a["release"]), sums))
+    return "".join(cards)
+
+
 def nav_html(pages, current):
     items = [("index.html", "Catalog", "index")] + [(p["slug"] + ".html", p["nav"], p["slug"]) for p in pages if not p.get("hidden")]
     return "".join('<li><a href="%s"%s>%s</a></li>' % (h, ' aria-current="page"' if k == current else "", html_escape(t)) for h, t, k in items)
@@ -94,7 +121,7 @@ def render_page(page, pages):
     return tpl
 
 
-def render(catalog, pages=(), helper_hashes=None):
+def render(catalog, pages=(), helper_hashes=None, patches_html="", apps_html="", n_patches=0, n_apps=0):
     """The catalog page HTML for a catalog dict. The JSON is embedded in a <script type=application/json>, so '<' is escaped."""
     data = json.dumps(catalog, separators=(",", ":"), ensure_ascii=False).replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
     store = json.dumps({k: v for k, v in (helper_hashes or {}).items() if isinstance(v, str) and len(v) == 64 and all(c in "0123456789abcdef" for c in v)})
@@ -102,8 +129,10 @@ def render(catalog, pages=(), helper_hashes=None):
     marker = "/*CATALOG_JSON*/"
     if tpl.count(marker) != 1:
         raise SystemExit("template must contain the marker exactly once")
-    guides = "".join('<a href="%s.html"><b>%s</b><span>%s</span></a>' % (p["slug"], html_escape(p["nav"]), html_escape(p["summary"])) for p in pages if not p.get("hidden"))
-    return tpl.replace("/*GUIDES*/", guides).replace("/*NAV*/", nav_html(list(pages), "index")).replace("/*SITE_CSS*/", read("site.css")).replace(marker, data)
+    guides = "".join('<a href="%s.html"><b>%s</b><span>%s</span></a>' % (p["slug"], html_escape(p["nav"]), html_escape(p["summary"])) for p in pages if not p.get("hidden") and p["slug"] != "patches")
+    return tpl.replace("/*GUIDES*/", guides).replace("/*NAV*/", nav_html(list(pages), "index")).replace("/*SITE_CSS*/", read("site.css")) \
+        .replace("/*PATCHES_HTML*/", patches_html).replace("/*APPS_HTML*/", apps_html) \
+        .replace("/*N_PATCHES*/", str(n_patches)).replace("/*N_APPS*/", str(n_apps)).replace(marker, data)
 
 
 def atom(catalog, base=""):
@@ -115,7 +144,7 @@ def atom(catalog, base=""):
                 items.append((v["date"], p, v))
     items.sort(key=lambda t: (t[0], t[1]["name"].lower()), reverse=True)
     out = ['<?xml version="1.0" encoding="utf-8"?>', '<feed xmlns="http://www.w3.org/2005/Atom">',
-           "<title>MPC OS Plugin Catalog: new releases</title>", "<id>tag:mpc-vst-catalog,2026:releases</id>",
+           "<title>Open MPC - Plugin Catalog: new releases</title>", "<id>tag:mpc-vst-catalog,2026:releases</id>",
            "<updated>%s</updated>" % (items[0][0] + "T00:00:00Z" if items else catalog.get("generated", "1970-01-01T00:00:00Z"))]
     if base:
         out.append('<link rel="self" href="%s"/>' % escape(base.rstrip("/") + "/feed.xml", {'"': "&quot;"}))
@@ -158,7 +187,7 @@ def tsv(catalog, helpers):
 
 
 # pages that no longer exist and where their content went (setup.html was merged into build.html on 2026-10-01)
-MOVED_PAGES = {"setup.html": "build.html"}
+MOVED_PAGES = {"setup.html": "build.html", "add.html": "workflow.html#list-it-in-the-catalog"}
 
 
 def redirect_page(target):
@@ -173,6 +202,7 @@ def main():
     ap.add_argument("--catalog", default="catalog/dist/catalog.json")
     ap.add_argument("--out", default="catalog/dist/site")
     ap.add_argument("--pages", default="catalog/pages", help="folder of guide pages (Markdown)")
+    ap.add_argument("--apps", default="catalog/apps.json", help="companion apps (desktop tools) for the catalog page's Companion apps tab")
     ap.add_argument("--patches", default="catalog/patches.json", help="device patches the installer app may offer (docs/PATCHES.md); published as patches.json if it exists")
     ap.add_argument("--base-url", default="", help="public site URL, for the feed's self link")
     a = ap.parse_args()
@@ -189,14 +219,25 @@ def main():
         if errors:
             raise SystemExit("catalog/patches.json is not valid:\n  " + "\n  ".join(errors))
         pages = sorted(pages + patch_pages(patches_doc, os.path.dirname(HERE)), key=lambda p: (p["order"], p["slug"]))
+    apps_doc = None
+    if os.path.isfile(a.apps):
+        import app_check
+        apps_doc = json.load(open(a.apps, encoding="utf-8"))
+        errors, _ = app_check.check(apps_doc)
+        if errors:
+            raise SystemExit("catalog/apps.json is not valid:\n  " + "\n  ".join(errors))
+    patches_html = next((p["html"] for p in pages if p["slug"] == "patches"), "")
     helpers = [("mpc-store.sh", os.path.join(HERE, "mpc-store.sh")), ("sync.sh", os.path.join(HERE, "release", "sync.sh")),
                ("plugin_list.awk", os.path.join(HERE, "release", "plugin_list.awk"))]
     hashes = {name: hashlib.sha256(open(path, "rb").read()).hexdigest() for name, path in helpers}
-    open(os.path.join(a.out, "index.html"), "w", encoding="utf-8").write(render(catalog, pages, hashes))
+    open(os.path.join(a.out, "index.html"), "w", encoding="utf-8").write(render(catalog, pages, hashes, patches_html, app_cards(apps_doc) if apps_doc else "",
+                                                                                    len(patches_doc["patches"]) if patches_doc else 0, len(apps_doc["apps"]) if apps_doc else 0))
     for pg in pages:
         open(os.path.join(a.out, pg["slug"] + ".html"), "w", encoding="utf-8").write(render_page(pg, pages))
     open(os.path.join(a.out, "feed.xml"), "w", encoding="utf-8").write(atom(catalog, a.base_url))
     shutil.copy(a.catalog, os.path.join(a.out, "catalog.json"))
+    if apps_doc is not None:
+        shutil.copy(a.apps, os.path.join(a.out, "apps.json"))
     if patches_doc is not None:
         shutil.copy(a.patches, os.path.join(a.out, "patches.json"))
     for name, path in helpers:   # the files a device downloads next to catalog.tsv, checked against the hashes listed in it
