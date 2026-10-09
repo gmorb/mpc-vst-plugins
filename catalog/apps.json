@@ -40,6 +40,23 @@
           "url": "https://github.com/FullPace/mpc-link/releases/download/v0.4.0/MPC-Link-0.4.0-windows-arm64.exe",
           "sha256": "3fe9f4035822f0906a72d372137170520d2b28ed3ff18d5a4c2d68611ce90e5b"
         }
+      ],
+      "assets": [
+        {
+          "platform": "macos",
+          "label": "macOS (zip)",
+          "pattern": "MPC-Link-*-macOS.zip"
+        },
+        {
+          "platform": "windows",
+          "label": "Windows (x64)",
+          "pattern": "MPC-Link-*-windows-amd64.exe"
+        },
+        {
+          "platform": "windows",
+          "label": "Windows (ARM64)",
+          "pattern": "MPC-Link-*-windows-arm64.exe"
+        }
       ]
     }
   ]

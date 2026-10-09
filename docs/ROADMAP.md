@@ -66,7 +66,6 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
 - [ ] **Announce to the community** and collect what people ask for before building more.
 
 ## Companion apps (catalog)
-- [ ] Companion app downloads are pinned by hand in `catalog/apps.json` (`downloads`); read asset names and sha256 digests from the GitHub release automatically, like plugin zips, with an `asset_pattern` per platform (issue #232).
 - [ ] A custom domain for the site (the old `github.io` URL is hardcoded in `tools/mpc-store.sh`, the page template's `SITE` fallback, the desktop app and the README).
 
 ## Patches (installer app)

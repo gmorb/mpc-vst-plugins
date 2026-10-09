@@ -31,9 +31,11 @@ entry. Package it with `tools/release_addin.py` instead of `release.py`: see `do
 A desktop tool that works with a standalone MPC but is not a plugin (for example MPC Link) is listed on the site's **Companion apps**
 tab from `catalog/apps.json`, not from `catalog/plugins/`. Open a PR adding one object to `apps`: `id`, `title`, `summary`, `author`,
 `license` (open source), `repo` (`owner/name`), `release` (https link to the release page), `platforms` (`macos`, `windows`, `linux`),
-and, recommended, `downloads` (`{platform, label, url, sha256}` per release asset, pinned to that release; `gh api repos/<repo>/releases/tags/<tag>`
-shows each asset's digest), plus optional `version`, `needs` (list) and `tested` (`{device, os}`). `python3 tools/app_check.py` checks the file.
-Nothing is installed on the device by the catalog or the installer app: the card only links to your release. Update `downloads` when you release.
+and `assets` (`{platform, label, pattern}` rules, for example `MyApp-*-macOS.zip`), plus optional `version`, `needs` (list) and `tested` (`{device, os}`).
+The nightly build reads your newest stable GitHub release and fills in the download links, version and sha256 (from the asset's digest, or a `SHA256SUMS`
+file in the release), so a new release needs no PR here; `tested` is the one thing you update by hand. Without `assets`, give `release` and pin `downloads`
+(`{platform, label, url, sha256}`) yourself. `python3 tools/app_check.py` checks the file; `python3 tools/app_resolve.py --out /tmp/x` shows what the build would publish.
+Nothing is installed on the device by the catalog or the installer app: the card only links to your release.
 
 ## If your plugin can't publish a zip: build-yourself
 Some ports compile the user's own firmware into the plugin (for example a DSP statically recompiled from an Elektron OS

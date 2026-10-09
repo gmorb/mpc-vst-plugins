@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Validate catalog/apps.json: companion apps (desktop tools that work with a standalone MPC but are not plugins), shown on the
-catalog page's Companion apps tab. Each app may list `downloads` ({platform, label, url, sha256}: pinned to a release asset). Usage: app_check.py [apps.json]. Returns (errors, apps) from check()."""
+catalog page's Companion apps tab. Each app may list `assets` ({platform, label, pattern}: tools/app_resolve.py fills `downloads`, `version` and `release` from the newest stable release) and/or `downloads` ({platform, label, url, sha256}: pinned to a release asset, the fallback). Usage: app_check.py [apps.json]. Returns (errors, apps) from check()."""
 import json
 import re
 import sys
 
 ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 PLATFORMS = {"macos", "windows", "linux"}
-REQUIRED = ("id", "title", "summary", "author", "license", "repo", "release", "platforms")
+REQUIRED = ("id", "title", "summary", "author", "license", "repo", "platforms")
 
 
 def check(doc):
@@ -20,6 +20,11 @@ def check(doc):
         for k in REQUIRED:
             if not a.get(k):
                 errors.append("%s: missing '%s'" % (where, k))
+        if not a.get("release") and not a.get("assets"):
+            errors.append("%s: needs 'release' (a release page URL) or 'assets' (rules app_resolve.py reads from the latest release)" % where)
+        for j, rule in enumerate(a.get("assets") or []):
+            if rule.get("platform") not in a.get("platforms", []) or not rule.get("label") or not rule.get("pattern"):
+                errors.append("%s.assets[%d]: needs a platform of the app, a label and a pattern" % (where, j))
         if a.get("id") and not ID_RE.match(a["id"]):
             errors.append("%s: id must be lowercase words joined by hyphens" % where)
         if a.get("id") in seen:

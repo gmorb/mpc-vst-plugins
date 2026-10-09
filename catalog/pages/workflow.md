@@ -147,7 +147,7 @@ Your repo needs an open-source license and a root `LICENSE` file, a one-command 
 This is community software that runs as root on people's devices. Say what the plugin does, keep the source public, and fix release problems quickly. Maintainers may remove a plugin that is unsafe or misleading.
 
 ### A desktop tool, not a plugin?
-A tool that runs on the user's computer next to an MPC (not a plugin, nothing installed on the device by the catalog) is listed on the **Companion apps** tab: add an entry to `catalog/apps.json` with your release page and, recommended, one pinned download and sha256 per platform. See `catalog/README.md`.
+A tool that runs on the user's computer next to an MPC (not a plugin, nothing installed on the device by the catalog) is listed on the **Companion apps** tab: add an entry to `catalog/apps.json` with your repo and, per platform, a pattern for the release asset: the nightly build then fills in the links, version and checksums from your newest stable release. See `catalog/README.md`.
 
 ## After the release
 The catalog finds new releases by itself every night. To list a plugin for the first time, see [List it in the catalog](#list-it-in-the-catalog) above. If a release fails the checks, it is left out, the previous version stays listed, and an issue is opened on the [catalog repository](https://github.com/sd88me/mpc-vst-plugins/issues) saying why.
