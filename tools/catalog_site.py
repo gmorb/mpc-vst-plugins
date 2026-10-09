@@ -75,7 +75,7 @@ def patch_pages(doc, root):
             'with the script shown, whose checksum you can verify.</p></blockquote>')
     pages.append({"slug": "patches", "title": "Device patches", "nav": "Device patches", "order": 40,
                   "summary": "Advanced and optional: community patches that change the device itself, listed read-only in the installer app's step 7.",
-                  "body": "", "html": note + '<div class="grid">%s</div>' % "".join(cards)})
+                  "body": "", "hidden": True, "html": note + '<div class="grid">%s</div>' % "".join(cards)})
     return pages
 
 
@@ -129,7 +129,7 @@ def render(catalog, pages=(), helper_hashes=None, patches_html="", apps_html="",
     marker = "/*CATALOG_JSON*/"
     if tpl.count(marker) != 1:
         raise SystemExit("template must contain the marker exactly once")
-    guides = "".join('<a href="%s.html"><b>%s</b><span>%s</span></a>' % (p["slug"], html_escape(p["nav"]), html_escape(p["summary"])) for p in pages if not p.get("hidden") and p["slug"] != "patches")
+    guides = "".join('<a href="%s.html"><b>%s</b><span>%s</span></a>' % (p["slug"], html_escape(p["nav"]), html_escape(p["summary"])) for p in pages if not p.get("hidden"))
     return tpl.replace("/*GUIDES*/", guides).replace("/*NAV*/", nav_html(list(pages), "index")).replace("/*SITE_CSS*/", read("site.css")) \
         .replace("/*PATCHES_HTML*/", patches_html).replace("/*APPS_HTML*/", apps_html) \
         .replace("/*N_PATCHES*/", str(n_patches)).replace("/*N_APPS*/", str(n_apps)).replace(marker, data)
