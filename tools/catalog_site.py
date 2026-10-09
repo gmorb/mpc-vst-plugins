@@ -202,7 +202,7 @@ def main():
     ap.add_argument("--catalog", default="catalog/dist/catalog.json")
     ap.add_argument("--out", default="catalog/dist/site")
     ap.add_argument("--pages", default="catalog/pages", help="folder of guide pages (Markdown)")
-    ap.add_argument("--apps", default="catalog/apps.json", help="companion apps (desktop tools) for the catalog page's Companion apps tab")
+    ap.add_argument("--apps", default="catalog/apps.json", help="companion apps (desktop tools) for the catalog page's Companion apps tab; <out>/../apps.json (app_resolve.py output) is used instead when it exists")
     ap.add_argument("--patches", default="catalog/patches.json", help="device patches the installer app may offer (docs/PATCHES.md); published as patches.json if it exists")
     ap.add_argument("--base-url", default="", help="public site URL, for the feed's self link")
     a = ap.parse_args()
@@ -220,6 +220,9 @@ def main():
             raise SystemExit("catalog/patches.json is not valid:\n  " + "\n  ".join(errors))
         pages = sorted(pages + patch_pages(patches_doc, os.path.dirname(HERE)), key=lambda p: (p["order"], p["slug"]))
     apps_doc = None
+    resolved = os.path.join(os.path.dirname(os.path.abspath(a.out)), "apps.json")   # catalog/dist/apps.json next to catalog/dist/site
+    if a.apps == ap.get_default("apps") and os.path.isfile(resolved):
+        a.apps = resolved
     if os.path.isfile(a.apps):
         import app_check
         apps_doc = json.load(open(a.apps, encoding="utf-8"))

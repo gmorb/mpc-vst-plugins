@@ -12,6 +12,7 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import app_check  # noqa: E402
 import catalog_check  # noqa: E402
 
 ENTRY = ('<PLUGIN name="Test Synth" format="VST" category="Synth" manufacturer="Acme" version="1.0" '
@@ -1531,6 +1532,73 @@ class StoreTest(Base):
         r = self.store("sync")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("hash", r.stderr)
+
+
+class AppResolveTest(unittest.TestCase):
+    """tools/app_resolve.py: companion app downloads from the newest stable release; pinned ones are the fallback."""
+    SHA = "ab" * 32
+
+    def doc(self):
+        return {"schema": 1, "apps": [{"id": "x-app", "title": "X", "summary": "s", "author": "a", "license": "MIT", "repo": "o/x",
+                "platforms": ["macos", "windows"], "release": "https://example.com/old",
+                "assets": [{"platform": "macos", "label": "macOS", "pattern": "X-*-mac.zip"},
+                           {"platform": "windows", "label": "Windows", "pattern": "X-*-win.exe"}],
+                "downloads": [{"platform": "macos", "label": "pinned", "url": "https://example.com/p", "sha256": "cd" * 32}]}]}
+
+    class GH:
+        def __init__(self, rels): self.rels = rels
+        def list_releases(self, repo):
+            if isinstance(self.rels, Exception): raise self.rels
+            return self.rels
+
+    def rel(self, tag, assets, **kw):
+        r = {"tag_name": tag, "html_url": "https://github.com/o/x/releases/tag/" + tag, "draft": False, "prerelease": False,
+             "assets": [{"name": n, "browser_download_url": "https://dl/%s/%s" % (tag, n), **extra} for n, extra in assets]}
+        r.update(kw)
+        return r
+
+    def test_digest_and_sha256sums_and_skips_prereleases(self):
+        import app_resolve
+        rels = [self.rel("v2.0.0-beta", [("X-2.0.0-mac.zip", {"digest": "sha256:" + "ff" * 32})], prerelease=True),
+                self.rel("v1.2.0", [("X-1.2.0-mac.zip", {"digest": "sha256:" + self.SHA.upper()}), ("X-1.2.0-win.exe", {}), ("SHA256SUMS", {})])]
+        sums = "%s  X-1.2.0-win.exe\n%s *X-1.2.0-mac.zip\n" % ("ef" * 32, "00" * 32)
+        out, problems = app_resolve.resolve(self.doc(), self.GH(rels), fetch=lambda url: sums)
+        a = out["apps"][0]
+        self.assertEqual((a["version"], a["release"]), ("1.2.0", "https://github.com/o/x/releases/tag/v1.2.0"))
+        self.assertEqual([(d["platform"], d["sha256"]) for d in a["downloads"]], [("macos", self.SHA), ("windows", "ef" * 32)])
+        self.assertEqual(problems, [])
+        self.assertEqual(app_check.check(out)[0], [])
+
+    def test_asset_without_a_checksum_is_left_out(self):
+        import app_resolve
+        rels = [self.rel("v1.0.0", [("X-1.0.0-mac.zip", {"digest": "sha256:" + self.SHA}), ("X-1.0.0-win.exe", {})])]
+        out, problems = app_resolve.resolve(self.doc(), self.GH(rels), fetch=lambda url: "")
+        self.assertEqual([d["platform"] for d in out["apps"][0]["downloads"]], ["macos"])
+        self.assertIn("no sha256 for X-1.0.0-win.exe", problems[0]["error"])
+
+    def test_api_failure_or_no_match_keeps_pinned_downloads(self):
+        import app_resolve
+        for gh in (self.GH(OSError("rate limited")), self.GH([]), self.GH([self.rel("v1", [("other.zip", {})])])):
+            out, problems = app_resolve.resolve(self.doc(), gh, fetch=lambda url: "")
+            self.assertEqual(out["apps"][0]["downloads"][0]["label"], "pinned")
+            self.assertIn("kept pinned downloads", problems[0]["error"])
+
+    def test_site_prefers_the_resolved_file_next_to_its_output(self):
+        root = os.path.dirname(HERE)
+        with tempfile.TemporaryDirectory() as t:
+            resolved = self.doc(); resolved["apps"][0]["downloads"] = [{"platform": "macos", "label": "Resolved label", "url": "https://dl/x", "sha256": self.SHA}]
+            json.dump(resolved, open(os.path.join(t, "apps.json"), "w"))
+            subprocess.run([sys.executable, os.path.join(HERE, "catalog_site.py"), "--catalog", os.path.join(root, "site-fixture", "catalog.json"),
+                            "--out", os.path.join(t, "site")], cwd=root, check=True, capture_output=True)
+            html = open(os.path.join(t, "site", "index.html"), encoding="utf-8").read()
+        self.assertIn("Resolved label", html)
+        self.assertNotIn("MPC-Link-0.4.0-macOS", html.replace("Resolved label", ""))
+
+    def test_check_rules(self):
+        bad = self.doc(); bad["apps"][0]["assets"][0]["platform"] = "amiga"; del bad["apps"][0]["release"]
+        self.assertEqual(len(app_check.check(bad)[0]), 1)
+        no_source = self.doc(); del no_source["apps"][0]["release"]; del no_source["apps"][0]["assets"]
+        self.assertIn("needs 'release'", app_check.check(no_source)[0][0])
 
 
 if __name__ == "__main__":

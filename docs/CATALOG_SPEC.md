@@ -171,10 +171,12 @@ refuses an invalid file). `{"schema": 1, "apps": [...]}`, each app:
 | `id`, `title`, `summary`, `author`, `license`, `repo` | required; `id` is lowercase words joined by hyphens, `repo` is `owner/name` |
 | `release` | required https URL of the release page |
 | `platforms` | required, from `macos`, `windows`, `linux` |
-| `downloads` | optional list of `{platform, label, url, sha256}`, `platform` one of the app's, `url` https, `sha256` 64 lowercase hex; pinned by hand to one release |
+| `release` | https URL of the release page; optional when `assets` is given (then set from the release) |
+| `assets` | optional rules `{platform, label, pattern}` (`pattern` is an fnmatch over asset names); `tools/app_resolve.py` reads them against the newest stable release (no drafts or prereleases) and fills `downloads`, `version` and `release` |
+| `downloads` | optional list of `{platform, label, url, sha256}`, `platform` one of the app's, `url` https, `sha256` 64 lowercase hex. Written by `app_resolve.py`; when there are no `assets`, or the release can't be read, the pinned list in the file is used |
 | `version`, `needs` (list), `tested` (`{device, os}`) | optional, shown on the card |
 
-Hand-pinned `downloads` are a first version: reading assets and digests from the GitHub release automatically is not built (`docs/ROADMAP.md`).
+`tools/app_resolve.py` runs in the Catalog build workflow (nightly, on pushes to `main` touching the catalog, and by hand) and writes `catalog/dist/apps.json`, which `catalog_site.py` prefers over `catalog/apps.json`. The sha256 is the asset's GitHub `digest`, else its line in a `SHA256SUMS` asset of the same release; an asset with neither is left out and reported. A failed read keeps the pinned `downloads`, so a bad night does not blank a card. A new release therefore appears on the next build, with no PR to this repo.
 
 ## Portable paths (for engines)
 Engines locate their data next to the `.so` (`wrapper/plugin_dir.h`, `MODULE_SUBDIR`), never at a fixed `/sdcard`.
