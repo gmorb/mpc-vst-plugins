@@ -324,6 +324,13 @@ class Contract(Rig):
                          "#!/bin/sh\nexec setarch -R -- /usr/bin/MPC \"$@\"\n")
         self.assertTrue(os.path.isfile(os.path.join(self.root, "data", "hwremap", "hwremap.so")))
 
+    def test_the_terminal_is_only_opened_after_a_subshell_check(self):
+        # BusyBox ends the shell when "read < /dev/tty" cannot open it (no tty over ssh), even with 2>/dev/null
+        # and || after it; dash does not, so run the check on the text
+        for n, line in enumerate(read(SCRIPT).splitlines(), 1):
+            if "/dev/tty" in line and not line.startswith("tty_ok()"):
+                self.assertIn("tty_ok", line, "line %d opens /dev/tty without tty_ok: %s" % (n, line))
+
     def test_inmusic_service_and_a_hostile_preload(self):
         r = self.patch("install", "--confirmed", HW_NO_ACVS="1", HW_INMUSIC="1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

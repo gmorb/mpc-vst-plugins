@@ -657,6 +657,7 @@ render_conf() { # $1 layout, $2 chosen options (space separated): the map with o
 write_default_conf() { # $1 path, $2 mpc-live|force, $3 chosen options
     render_conf "$2" "$3" > "$1"
 }
+tty_ok() { ( : < /dev/tty ) 2>/dev/null; } # a failed redirect on a builtin ends a BusyBox shell, so try it in a subshell
 list_has() { case " $1 " in *" $2 "*) return 0 ;; esac; return 1; }
 list_add() { if list_has "$1" "$2"; then echo "$1"; else echo "${1:+$1 }$2"; fi; }
 list_del() { out=; for x in $1; do [ "$x" = "$2" ] || out="${out:+$out }$x"; done; echo "$out"; }
@@ -691,7 +692,7 @@ ask_options() { # a checklist on the terminal; changes OPTS
             printf '  %2d [%s] %s\n' "$i" "$m" "$t"
         done
         printf 'Number to switch on/off, a = all, n = none, Enter = continue: '
-        if on_device; then read -r a < /dev/tty 2>/dev/null || read -r a; else read -r a; fi
+        if on_device && tty_ok; then read -r a < /dev/tty; else read -r a; fi
         case "$a" in
             "") return ;;
             a) OPTS=${names% } ;;
@@ -707,7 +708,7 @@ ask_options() { # a checklist on the terminal; changes OPTS
     done
 }
 can_ask() { # a terminal to ask on (tests: HW_ASK=1 reads stdin)
-    if on_device; then [ -r /dev/tty ] && : < /dev/tty 2>/dev/null; else [ "${HW_ASK:-}" = 1 ]; fi
+    if on_device; then tty_ok; else [ "${HW_ASK:-}" = 1 ]; fi
 }
 
 mpc_service() {
@@ -882,7 +883,7 @@ on_exit() {
 confirm() { # $1 word
     [ "$CONFIRMED" = 1 ] && return 0
     printf 'Type %s to continue: ' "$1"
-    if on_device; then read -r a < /dev/tty 2>/dev/null || read -r a; else read -r a; fi
+    if on_device && tty_ok; then read -r a < /dev/tty; else read -r a; fi
     [ "$a" = "$1" ] || die "cancelled; nothing was changed"
 }
 
