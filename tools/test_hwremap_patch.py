@@ -314,6 +314,16 @@ class Contract(Rig):
         self.assertFalse(os.path.exists(os.path.join(self.root, "data", "hwremap")))
         self.assertIn("daemon-reload", read(self.log))
 
+    def test_a_launcher_without_ld_preload_takes_the_dropin(self):
+        # a Force: /usr/bin/az01-launch-MPC exists (the service runs it) but sets no LD_PRELOAD
+        self.launcher("#!/bin/sh\nexec setarch -R -- /usr/bin/MPC \"$@\"\n")
+        r = self.patch("install", "--confirmed")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("style:   dropin", r.stdout)
+        self.assertEqual(read(os.path.join(self.root, "usr", "bin", "az01-launch-MPC")),
+                         "#!/bin/sh\nexec setarch -R -- /usr/bin/MPC \"$@\"\n")
+        self.assertTrue(os.path.isfile(os.path.join(self.root, "data", "hwremap", "hwremap.so")))
+
     def test_inmusic_service_and_a_hostile_preload(self):
         r = self.patch("install", "--confirmed", HW_NO_ACVS="1", HW_INMUSIC="1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

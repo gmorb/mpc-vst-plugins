@@ -716,7 +716,8 @@ mpc_service() {
     else echo ""; fi
 }
 detect_style() {
-    if [ -f "$LAUNCHER" ]; then echo launcher
+    # a Force has the launcher file too (the script its service runs) but it sets no LD_PRELOAD: that one takes the drop-in
+    if [ -f "$LAUNCHER" ] && grep -q 'LD_PRELOAD=' "$LAUNCHER"; then echo launcher
     elif [ -n "$(mpc_service)" ]; then echo dropin
     else echo ""; fi
 }
