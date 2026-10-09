@@ -161,6 +161,21 @@ zip uses `layout: "addin"`:
 - **`catalog.tsv`, addins:** `skin` and `uid` are `-`. `mpc-store.sh` installs an addin to `/data/mpc-addins/<id>` and reads the installed
   version from the folder's `addin.manifest` (`ADDIN_VERSION`), not from `.mpc-store`.
 
+## Companion apps (`catalog/apps.json`)
+Desktop tools that work with a standalone MPC but are not plugins. Not part of `catalog.json`, `catalog.tsv` or any installer: the site
+shows them on its Companion apps tab, and `apps.json` is published next to `catalog.json`. Checked by `tools/app_check.py` (the site build
+refuses an invalid file). `{"schema": 1, "apps": [...]}`, each app:
+
+| field | |
+|---|---|
+| `id`, `title`, `summary`, `author`, `license`, `repo` | required; `id` is lowercase words joined by hyphens, `repo` is `owner/name` |
+| `release` | required https URL of the release page |
+| `platforms` | required, from `macos`, `windows`, `linux` |
+| `downloads` | optional list of `{platform, label, url, sha256}`, `platform` one of the app's, `url` https, `sha256` 64 lowercase hex; pinned by hand to one release |
+| `version`, `needs` (list), `tested` (`{device, os}`) | optional, shown on the card |
+
+Hand-pinned `downloads` are a first version: reading assets and digests from the GitHub release automatically is not built (`docs/ROADMAP.md`).
+
 ## Portable paths (for engines)
 Engines locate their data next to the `.so` (`wrapper/plugin_dir.h`, `MODULE_SUBDIR`), never at a fixed `/sdcard`.
 The installers currently still install to the directory in the entry's `file=` and skins to `/sdcard/Synths`.
