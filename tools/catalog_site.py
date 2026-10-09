@@ -158,7 +158,7 @@ def tsv(catalog, helpers):
 
 
 # pages that no longer exist and where their content went (setup.html was merged into build.html on 2026-10-01)
-MOVED_PAGES = {"setup.html": "build.html"}
+MOVED_PAGES = {"setup.html": "build.html", "add.html": "workflow.html#list-it-in-the-catalog"}
 
 
 def redirect_page(target):
