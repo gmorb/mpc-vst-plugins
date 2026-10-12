@@ -15,7 +15,7 @@ one MPC stop and start around the whole batch when the installers allow it.
    `systemctl`? where is `MPC.settings`?) and refuses one that is not an MPC OS device. The device's key fingerprint is shown; nothing
    about the device is saved.
    The device scan lists every writable `Synths` location (the internal drive, and `/media/*/Synths` for cards and drives; read-only mounts such as
-   MPC's own content folder are skipped, and the same storage reached by two paths is listed once). Step 3 lets you pick where to install, the
+   MPC's own content folder are skipped, and the same storage reached by two paths is listed once; the internal drive's `Synths` folder is created at connect when it is missing, 2026-10-11). Step 3 lets you pick where to install, the
    internal drive by default, and warns when MPC does not list the folder as a content location. A drive that cannot store symbolic links
    (FAT, exFAT, NTFS) is refused for a package that needs them, and so is a drive without room. A drive mounted `noexec` (an MPC/Force's SSD is) is refused too: MPC cannot load a plugin from it, so the plugin would be listed but only show "Load Plugin".
 2. **Choose:** the catalog's newest stable release of every downloadable plugin, plus any zips you drop in. Tabs for Instruments, MIDI (generators and sequencers, from the catalog's `role: "midi"`), Effects, Addins and All (everything together) (2026-10-10, like the catalog page; the counts follow the search, so you can see which tab holds a match), a search box, a developer filter, a sort, and a "show" filter (not on the device, on the device, updates available, only the ones you ticked) keep a
@@ -58,7 +58,8 @@ The page uses that to state the exact number of MPC restarts before you confirm,
 itself. A zip you drop in is inspected directly.
 
 **MPC OS badge and warnings.** The catalog also says which MPC OS generations a version works on (`os_compat`, `os_compat_why` and `max_glibc` in
-`catalog.json`; columns 15 and 16 of `catalog.tsv`; docs/OS2_SKINS.md). The list shows "MPC OS 2.x + 3.x" or "MPC OS 3.x only", and connecting
+`catalog.json`; columns 15 and 16 of `catalog.tsv`; docs/OS2_SKINS.md). MPC OS 3.x is the standard, so the list shows only one
+badge, "MPC OS 2.x tested", on a 2.x-capable version with a 2.x device test (`tested[].firmware` 2.x; 2026-10-12, as on the catalog site). Connecting
 reads the device's glibc (`libc` in the device info: run the libc for its version, or take it from `libc-2.33.so`; nothing is guessed when
 neither works). Against that glibc the list adds a note per plugin, and the install dialog repeats it: a plugin that needs a newer glibc than
 the device has "will not load" (the button becomes *Install anyway*), and a 3.x-only plugin on a device below glibc 2.34 (MPC OS 2.x) "may

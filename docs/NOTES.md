@@ -1026,6 +1026,8 @@ A user batch-installed plugins to the Force's SSD with the desktop installer: al
 - Workaround: install to the internal drive or an SD card (`/sdcard/Synths`).
 - Second user report (2026-10-04, Force, volume `/media/FORCE 2`, installer app / web UI): same "mounted noexec" refusal. Fix that worked for them: create a `Synths` folder at the root of the internal drive (with WinSCP) and install there; plugins then load. User report, not run by us. Remounting the drive `exec` is not something we do or document (it needs MPC stopped and a hand edit of the mounts); see `docs/PATCHES.md`.
 - **Desktop app bug found while looking (not the cause), fixed:** `readInfo` (`tools/desktop/device.go`) took the mount point from `df ... $NF`, so `/media/SSD - Force` became `Force`; the `/proc/mounts` lookup then found nothing (it writes spaces as `\040`) and the filesystem and options came back empty, which also skipped the symlink and read-only checks. It now reads `df -kP` fields 6+ and matches the escaped name.
+- Third user report (2026-10-11, MPC One, installer app 0.5.1): "0 plugin folders found", only the exfat SD card listed, and refused as `noexec`; the internal drive was not offered at all. Cause of the missing internal drive: the scan lists only an existing, writable `Synths` folder, and this MPC One had none on `/sdcard` (its official plugins are on the card). Fix (host test `TestMissingInternalSynthsFolderIsCreated`, not yet run on the device): the app now creates `/sdcard/Synths` at connect when `/sdcard` exists and is writable. The card's mount line was not collected; the refusal says it is `noexec`, so an MPC One SD card can be `noexec` too.
+- User report (2026-10-11, installer app 0.5.2, drive `/media/MPC-DRIVE`): after the drive exec patch (status "applied"), the app still called the drive's `Synths` "mounted noexec" and refused to install. Cause: the app took the mount point from `df`, which names the drive for a bind mount of one of its folders, so it read the drive's `noexec` and not the patched folder's `exec`. Fix (host test `TestAnExecBindMountOfTheSynthsFolderIsNotNoexec`, not yet run on the device): the options come from the longest `/proc/mounts` mount point on the location's path. Not a device fact yet that plugins then load from it.
 - **noexec check (host tests only, not run on a Force):** the app flags a location mounted `noexec` (`Root.NoExec`, a note on the location, install refused with the reason); `install.sh` prints a warning (it still installs, so a hand-made exec mount is not blocked). Tests: `TestNoexecMountWithSpacesInItsNameIsFlaggedAndRefused` (fake BusyBox-style `df` line and an escaped `/proc/mounts` line; fails with the old parsing), `tools.test_catalog` (70 OK), `install.sh` fragment run against a fake `df` and `/proc/mounts` with and without `noexec`.
 
 ## 2026-10-03: network addins bind to 127.0.0.1 by default; the hardened installer on a device (Key 37)
@@ -1380,3 +1382,46 @@ for any plugin from this catalog (`mpc-vst-cratedigger`'s `tested.json`).
   terminfo entry in `mpc-vst-cratedigger`'s history: the bundled Python's terminfo database has ~25 case-only duplicate filenames
   that collide on the tester's case-insensitive exFAT drive. Fixed by stripping `share/terminfo` at build time (unused, no
   curses/readline UI); worth checking any other plugin that bundles a full interpreter/runtime for the same risk.
+
+## 2026-10-12: hwremap needs to be first in LD_PRELOAD when the remote addin is loaded
+On the Force (MPC OS 3.9.1, stock path) with `LD_PRELOAD` = remote addin : hwremap : skipback : commander, no hwremap rule fired and `log 1` wrote no `/tmp/hwremap.log` at all, although `hwremap.so` was mapped in MPC. `mpc_remote_addin.so` exports its own `snd_rawmidi_open`, `snd_rawmidi_read`, `snd_rawmidi_close`, `poll` and `__poll_chk`, so with it first the dynamic linker resolves MPC's calls to it and hwremap's hooks are never called. Putting hwremap first (`hwremap : remote : skipback : commander` in the `acvs` drop-in, then `systemctl restart acvs`) made Mixer x2, Edit x2 and Menu x2 work (user confirmed, device). The installer now puts hwremap at the front of the list (both the systemd drop-in and the launcher style); it used to append. Addins installed later by `addin-lib.sh` add themselves behind it (they edit the winning drop-in). Offline: `tools/test_hwremap_patch.py` passes with the new order. Any other addin that exports `snd_rawmidi_*` or `poll` has the same effect on whatever sits behind it.
+
+## 2026-10-11: the MPC Skipback addin (0.3.0, 0.4.0) on a Force; listed as Experimental
+`sd88me/mpc-addin-skipback`: records main out continuously and saves the last 30 to 60 s as a 24-bit WAV on a double press of a controller button. Run on the Force (MPC 3.9.1) with `hwremap.so` loaded before it in `LD_PRELOAD` (device checks 2026-10-10, offline tests ASan/UBSan against a fake libasound and rawmidi):
+- **Audio:** MPC opens `hw:2` (ADA2) as 4 ch S32 44.1 kHz interleaved; channels 0/1 are main out. A save is exact (30.0 s = 7,938,044 bytes) and takes 2 to 5 s on the SD card; the audio thread only copies samples.
+- **Controller port:** MPC opens the Private port once, input and output, as `hw:1,0,1` (`'Akai Pro Force' / 'Akai Pro Force Private'`). The addin hooks `snd_rawmidi_read` on it (reading below `hwremap.so` it sees the raw hardware bytes and changes none) and `snd_rawmidi_write` (to learn each LED's last value). Rec Arm is note 93 (`90 5D 7F`); a double press within 350 ms saves.
+- **LEDs:** MPC sets a button LED with a control change on channel 1 to the Private port (controller = button, value = state), only when it changes; the addin blinks the button's LED (three quick flashes on the press, three slow ones when written) and writes MPC's last value back. Seen values: LED 53 alternates 1/3 with the tempo, 94 = 1, 113 = 4, 56 = 2/4, 0 = 1, 67 = 3. MPC never wrote LED 93 in the tests, so the blink restores 0. The CC protocol is only known on the Force: `led=auto` sends nothing to other models.
+- **Where saves go:** `output_dir=auto` takes a mounted `/dev/sd*` volume first (here the 29 GB exfat USB drive at `/media/662522`, saved as `/media/662522/Skipback`), then an external SD card (`/dev/mmcblk1+`), then the Samples folder from `MPC.settings` (`folder3 = /sdcard/Force Documents/Samples`). The rules for other models are unchecked.
+- **Other models:** the default button there is Overdub (80), unverified; `button=learn` lets a user double-press any button to teach it (`button.learned`). Not run on a device yet.
+- **Installer:** the addin install landed in `hwremap.conf`'s quoted `LD_PRELOAD` (the last drop-in systemd reads) and kept the file's other entries; it also noticed an old MockbaMod `run_skipback.sh` on the USB stick and said so. Buffer: about 48 MB of RAM over the first couple of minutes whatever `window_sec` is.
+- **Catalog:** listed as Experimental (`catalog/plugins/skipback.json`; the releases are GitHub prereleases, so the build shows a beta channel and no stable version). A local `catalog_build.py` run on the entry alone: 1 plugin, 2 versions, 0 problems, no risky-call flags.
+
+## 2026-10-11: addins missing after a reboot: `/etc` is mounted after systemd reads its units (Key 37, MPC OS 3.9.1; device)
+Reported on a stock Key 37 3.9.1.2 (mpc-addin-usb-audio #2) and a Live II on custom firmware (#1): after a reboot the addin
+was not loaded, `systemctl show acvs -p DropInPaths` was empty although `90-mpc-addins.conf` existed, and
+`systemctl daemon-reload` plus a restart fixed it. Cause, read on a Key 37 (az01 base 5.0.17): `/etc` is an overlay
+(`upperdir=/data/system/etc/overlay`) mounted by systemd's own `etc.mount` (6.6 s into boot), after PID 1 read its units
+from the read-only lower `/etc`, so the drop-in in the upper layer is not seen until a reload. That boot started MPC at 8 s
+without addins. Nothing stock runs from writable storage after `/etc` is mounted (every unit's `ExecStart`, the launcher
+`az01-launch-MPC` and `az01-script-runner` checked), so the fix needs the root filesystem. Not caused by #238: the drop-in
+path dates from 2026-10-02. Fix: the addin installer's `mpc-addins-reload.service` (ADDINS.md, "After a reboot").
+**Device test (Key 37, 2026-10-11):** USB Audio 1.0.2 reinstalled with the new installer files wrote the unit and the
+`acvs.service.wants` link, `/` back read-only. After a reboot: `etc.mount` at 6.6 s, the reload unit 8.8-9.7 s (reload
+776 ms), MPC started at 10.2 s with every addin in its `LD_PRELOAD`, `NRestarts=0`, and USB Audio tapping from that first
+process. About 1 s is added to boot. Not tested: the uninstall path on a device, MPC OS 2.x (no overlay, so no unit) and
+a firmware update.
+
+## 2026-10-12: MIDI channels through a plugin's own port; engine-made changes reach the screen (Live II, MPC OS 3.9.1; device)
+From saustin2010's Percolator 2.0.0 (four drum voices, a MIDI channel each, like the Erica Synths Pērkons;
+[mpc-vst-percolator](https://github.com/saustin2010/mpc-vst-percolator), `src/midiin.h`):
+- **MPC hands a plugin on its track every note-on on channel 1**, whatever channel the MIDI track sent it on, and its
+  note-off on the channel it came on (traced: a MIDI track on channel 3, routed into the plugin's track, arrived as
+  `90 41 7f` then `82 41 40`). So a plugin can't tell channels apart through its track, and should end a note on its
+  note-off whatever the channel (a drone never stopped otherwise).
+- **A plugin's own ALSA sequencer input port works as a MIDI track's output.** A writable port (client named after the
+  plugin, port "MIDI In"; libasound dlopen()ed, read without blocking at the start of each block, no thread) is listed
+  in a MIDI track's MIDI OUTPUT PORT as "<client> MIDI In", and the track's notes and CCs reach it on their own channels.
+- **Engine-made changes reach the screen** with `mpc_engine_changed()` (`wrapper/engine.h`): the engine sets its knobs
+  and switches from that port's CCs and names each, and the wrapper reports them as it does a MIDI CC's change. On the
+  Live II a knob on the page followed a CC stream. Offline: `poc/selfset` in `tools/host_test.c` (reported once, then
+  at most every 1024 frames; an option's change with an UpdateDisplay; nothing the engine didn't name).

@@ -14,6 +14,8 @@ checksum and device-verification status, that stays correct without anyone editi
    of that plugin passes; see `tools/catalog_issues.py`).
 5. **Installers execute as root on someone's device.** So: open source only, checksums shown, canonical
    `install.sh` checked, previous versions kept, a maintainer can yank a version.
+6. **No other company's branding.** Listed skins, screenshots and plugin names carry no manufacturer names or logos
+   (rule added 2026-10-12 after LXRXXL, #290, was delisted for it). See `catalog/README.md` "Skins and branding".
 6. **The catalog never hosts or links a build that contains someone else's firmware.** A port whose DSP is compiled
    from the user's own firmware cannot publish a zip, so it lists as **build-yourself** (below): open source, no
    download, no checksum, a build command and the user's own files it needs. This is a separate distribution type;
@@ -32,7 +34,8 @@ vst-release.yml  --release-->   nightly + on-dispatch workflow:       device scr
 ### Registry entry (`plugins/<id>.json`, hand-written once)
 `id`, `name`, `author`, `repo` (owner/name), `kind` (instrument | effect), `license`, `summary`, `screenshot`
 (optional `https://` URL; the site ignores anything else), `asset_pattern` (default `*-mpc-armv7.zip`), `homepage` (optional),
-`tier` (optional, only `"experimental"`) and `featured` (optional bool); see Trust tiers below. Nothing versioned.
+`tier` (optional, only `"experimental"`) and `featured` (optional bool); see Trust tiers below. `flags_reviewed` (optional list of
+risky-call categories a maintainer has looked at, e.g. `["network"]` for a remote-control plugin; see Validation). Nothing versioned.
 
 ### Distribution types
 `distribution` in the registry entry: `release` (default; everything above) or `build-yourself`.
@@ -64,8 +67,14 @@ list. Each plugin gets a `tier` in `catalog.json`, computed by `catalog_build.py
 `verified` (the newest stable, unyanked version has a `tested.json` entry), `listed` (valid release, no recorded test) or
 `experimental` (no stable release, or the registry entry says `"tier": "experimental"`). The registry may only cap a tier
 (`"tier"` accepts only `"experimental"`); `"featured": true` is a maintainer pick, ignored while experimental. The site hides
-Experimental by default (the Tier filter and a "Show them" link reveal it), badges every card, and the default sort,
-"Recommended", is featured, then tier, then name. Catalogs built before the field read as `listed`. Deliberately not done:
+Experimental by default (the Tier filter and a "Show them" link reveal it), badges Verified and Experimental cards only (2026-10-11:
+Listed is the unlabelled middle, still computed and filterable as "Not yet verified"), and the default sort,
+"Recommended", is featured, then tier, then name. Verified is split by device generation (2026-10-12, offline: unit tests and a
+headless-browser check): `verified_on` in `catalog.json` lists `gen1` and/or `gen2` (`verified_on` in `catalog_build.py`). A `tested.json`
+entry whose `device` names Gen2 counts for `gen2`, and only when that version has an aarch64 build; any other entry counts for `gen1`.
+The card shows one badge per generation ("Verified Gen1", "Verified Gen2"), the Tier filter has "Verified on Gen1" and
+"Verified on Gen2", and the quality bar asks for a Gen2 test (`tested-gen2`) when a Gen2 build has none. The tier itself stays one
+value (verified on either generation), so the sort is unchanged. Catalogs built before the field read a verified plugin as Gen1. Catalogs built before the field read as `listed`. Deliberately not done:
 star ratings, comments, upvotes (few users, needs a backend and moderation; if wanted later, compatibility reports through
 GitHub Discussions that feed `tested.json` fit the static model better, with any vote count only a tiebreaker inside a tier).
 
@@ -95,6 +104,16 @@ Zip layout matches the spec; manifest matches the registry (`id`, `uid`, repo); 
 GLIBC <= 2.36 (above 2.32 it is listed as MPC OS 3.x only); `install.sh`/`uninstall.sh`/`plugin_list.awk` are identical to this repo's canonical copies (or a
 diff is flagged for manual review); checksums match; `uid` and `file=` name don't collide with any other catalog
 entry; license file present. This reuses code already in `tools/release.py`.
+Risky calls (2026-10-11, offline: `tools/test_catalog.py`): every ELF file in the zip has its imported functions read from
+its dynamic symbol table (`RISKY_CALLS` in `tools/catalog_check.py`): network, running programs, loading code at runtime, changing the
+system. A hit is a warning and a `flags` field on the version record, never a rejection: a person looks, or the author explains.
+`dlopen` on its own is not flagged (toolchains import it); next to other calls it is.
+It sees only what the file imports, so a determined author can hide a call; it catches the careless case, not a skilled one.
+The nightly build re-checks every kept version and writes `flags.json` next to `problems.json`: the newest stable version of
+each plugin, less the categories in its entry's `flags_reviewed`. `tools/catalog_issues.py` opens one issue per plugin and set of
+categories ("Catalog: <id> flagged for review (network, runs programs)"). Closing it is the review: it is never reopened, a later
+version with the same categories opens nothing, new categories open a new issue (2026-10-11, offline tests only; the first run
+opened one issue per version, 70 in all, which this replaced).
 
 ### Site
 Generated static HTML (`tools/catalog_site.py`, no JS framework): searchable/filterable grid, a page per plugin
@@ -235,6 +254,9 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
 ## Risks and open questions
 - **Root install of third-party binaries.** Mitigated by open-source-only, canonical installer check, visible
   checksums and yanking. State clearly on the site that everything is community-provided.
+  Done (2026-10-11): the catalog footer and the installer app's connect step say community-provided, root, at your own risk,
+  no warranty, back up first, not affiliated with Akai. What Verified means (a hardware test, not a security review)
+  is explained on the install page and in the README, not on every page.
 - **Non-GitHub hosting.** Start GitHub-only; the registry's `repo` field can grow a `releases_url` later.
 - **Authors not using `release.py`.** Support them by documenting the manifest; the validator is the contract.
 - **Rate limits / token.** One nightly run with the Actions token is far below limits for hundreds of plugins.
