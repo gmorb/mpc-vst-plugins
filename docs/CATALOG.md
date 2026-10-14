@@ -215,6 +215,7 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
 - [x] Re-release the current plugins in the new layout and test on a device (done 2026-10-02, verified on a Force): Dexed 1.0.4, JV-880 1.0.5, Acid 1.0.3, Crate Digger 1.1.5, Maze Voice 1.0.1, Maze Sequencer 1.0.1; Monomodule 0.10.2 and Machinemodule 0.3.6 are build-yourself (per-user builds go through `release.py`, so they are portable). Euclidier stays parked.
 - [x] Guides (Install, Build, Workflow; Setup was merged into Build on 2026-10-01) checked against the new layout (2026-09-30): Install's manual steps use `plugin-meta.xml`,
       and it has "If a plugin disappears after a restart". Site cards carry no layout-specific text (`index.template.html`).
+- [x] Old-layout releases are flagged (2026-10-13, offline: `tools/test_catalog.py`): warning in `catalog_check.py`, a builder problem for a newest stable release, and a PR check (`--require-portable`) for new or changed registry entries. Prompted by a third-party port whose release zip still used `/sdcard/vst` and did not show up in plugin managers.
 - [x] Published releases still in the old layout dropped off a list-rebuilding scanner (NOTES 2026-09-30); all current plugins were re-released above, so the scanner and the catalog agree.
 
 ### Phase 4: Install and update from the device or desktop
@@ -228,6 +229,13 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
 - [x] (2026-09-30) Catalog page that builds the one-line command (`ssh -t root@<ip> "wget -qO /tmp/mpc-store.sh <site>/mpc-store.sh && sh /tmp/mpc-store.sh install acid jv-880"`: download, then run, not piped into `sh`, so the confirmation prompts can read the keyboard), with the script
       text and a "download and review first" version. Ticks on the cards, IP box, copy button, the review steps with the script's sha256; the
       selection lives in the link (`#sel=acid,jv-880`); `tools/catalog_site/browser_test.py` (Playwright in the html_art image) covers it.
+- [x] (2026-10-12) Screenshot popup: a card's `screenshot` sits at the top of the card (cropped to 2:1, a dead link drops the frame); clicking
+      it opens the whole card over a dark backdrop with the picture uncropped. The popup has its own link, `#p=<id>` added to the page's
+      hash (ids are stable); a link without `tab=` opens on the plugin's tab. Escape, Back, the backdrop and × close it. Same browser test.
+- [x] (2026-10-13) Share links: `catalog_site.py` writes `p/<id>.html` per plugin with the card's Open Graph and Twitter tags (title,
+      summary, screenshot), since link previews read neither the `#p=` hash nor JS. The page sends a browser on to `index.html#p=<id>` by
+      script (no meta refresh: Facebook's crawler would follow it). The popup's "Copy link" button, the card's title and its screenshot all
+      link there; the title opens the popup on cards without a screenshot too.
 - [x] Desktop helper (2026-09-30): `tools/desktop` (Go, one static binary per OS, one dependency): a local web page on 127.0.0.1 behind a random
       token; connect over SSH, pick catalog plugins and/or drop release zips (build-yourself ones too), install with one MPC stop/start;
       catalog downloads checked against the catalog's sha256; tar stream keeps modes/symlinks; older installers (no `-n`) run first
