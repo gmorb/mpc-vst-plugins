@@ -14,7 +14,7 @@ the user's own firmware) has no download: versions are the repo's vX.Y.Z git tag
 declared build script. A GitHub release that carries a *-mpc-armv7.zip asset is reported loudly (it would break the
 licence position). No zip is fetched or validated.
 
-GITHUB_TOKEN (optional) raises the API rate limit. --check-registry only validates the registry files (for PRs).
+GITHUB_TOKEN (optional) raises the API rate limit. --check-registry only validates the registry files, and that no stray *.json sits beside them in catalog/ (for PRs).
 Standard library only. See docs/CATALOG.md and docs/CATALOG_SPEC.md.
 """
 import argparse
@@ -41,6 +41,12 @@ BUILD_YOURSELF_FIELDS = ("requires_user_files", "build", "components")
 TAG_VERSION = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
 ZIP_PATTERN = "*-mpc-armv7.zip"
 # SPDX ids accepted as open source; anything else needs a human decision (edit this list in the PR that adds it).
+MAX_SUMMARY = 350   # characters; longer detail belongs in the repo README (docs/CATALOG.md)
+MAX_TAGS = 8
+CATALOG_FILES = {"apps.json", "patches.json", "yanked.json"}   # the only JSON directly in catalog/; plugin entries live in plugins/
+# Entries that predate the limits and are waiting for their authors' feedback on a trim; the trim removes the id from here.
+OVER_LIMIT_OK = {"loop-saboteurxxl", "boris-granular", "effectforce", "evil-tuner-xxl", "interzonexxl", "lxrxxl-bazzline", "lxrxxl-zynth", "lxrxxl",
+                 "plateauxxl", "sturm-tp", "subforce", "surgexxl"}
 OPEN_LICENSES = {"MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Apache-2.0", "GPL-2.0-only", "GPL-2.0-or-later",
                  "GPL-3.0-only", "GPL-3.0-or-later", "LGPL-2.1-only", "LGPL-2.1-or-later", "LGPL-3.0-only",
                  "LGPL-3.0-or-later", "AGPL-3.0-only", "AGPL-3.0-or-later", "MPL-2.0", "Unlicense", "CC0-1.0", "Zlib"}
@@ -56,6 +62,9 @@ def check_entry(e, fname=None):
         return p
     if not ID.fullmatch(e["id"]):
         p.append("bad id %r" % e["id"])
+    if len(e["summary"]) > MAX_SUMMARY and e["id"] not in OVER_LIMIT_OK:
+        p.append("summary is %d characters, the limit is %d: keep the card short and put the detail in the repo README"
+                 % (len(e["summary"]), MAX_SUMMARY))
     if fname and os.path.splitext(os.path.basename(fname))[0] != e["id"]:
         p.append("file name must be <id>.json")
     if not REPO.fullmatch(e["repo"]):
@@ -80,6 +89,8 @@ def check_entry(e, fname=None):
         p.append("featured must be true or false")
     if "tags" in e and not (isinstance(e["tags"], list) and all(isinstance(t, str) and ID.fullmatch(t) for t in e["tags"])):
         p.append("tags must be a list of lowercase slugs")
+    elif len(e.get("tags", [])) > MAX_TAGS and e["id"] not in OVER_LIMIT_OK:
+        p.append("%d tags, the limit is %d: keep the ones people would filter by" % (len(e["tags"]), MAX_TAGS))
     dist = e.get("distribution", "release")
     if dist not in DISTRIBUTIONS:
         p.append("distribution must be one of %s" % ", ".join(DISTRIBUTIONS))
@@ -239,6 +250,13 @@ def load_registry(path):
                 comp_ids[c["id"]] = e["id"]
             entries.append(e)
     return entries, problems
+
+
+def stray_files(catalog_dir):
+    """JSON files directly in catalog/ other than CATALOG_FILES: usually a plugin entry added one folder too high (GitHub's
+    "Create file" in catalog/), which the build never reads, so without this check CI passes an entry that is never listed."""
+    return [(f, "not read by the build: a plugin entry goes in plugins/<id>.json")
+            for f in sorted(glob.glob(os.path.join(catalog_dir, "*.json"))) if os.path.basename(f) not in CATALOG_FILES]
 
 
 class GitHub:
@@ -545,6 +563,8 @@ def main():
                     help="validate only these entries' releases and fail when a newest release is of the old layout (PR check for new listings)")
     a = ap.parse_args()
     entries, reg_problems = load_registry(a.registry)
+    if a.check_registry:
+        reg_problems += stray_files(os.path.dirname(os.path.normpath(a.registry)))
     for f, m in reg_problems:
         print("error: %s: %s" % (f, m), file=sys.stderr)
     if a.check_registry:
