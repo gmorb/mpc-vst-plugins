@@ -32,7 +32,8 @@ vst-release.yml  --release-->   nightly + on-dispatch workflow:       device scr
 ```
 
 ### Registry entry (`plugins/<id>.json`, hand-written once)
-`id`, `name`, `author`, `repo` (owner/name), `kind` (instrument | effect), `license`, `summary`, `screenshot`
+`id`, `name`, `author`, `repo` (owner/name), `kind` (instrument | effect), `license` (an SPDX ID, or IDs joined by `AND`/`OR` when the zip
+bundles a program under another licence, e.g. `MIT AND Apache-2.0`: open when every ID is), `summary`, `screenshot`
 (optional `https://` URL; the site ignores anything else), `asset_pattern` (default `*-mpc-armv7.zip`), `homepage` (optional),
 `tier` (optional, only `"experimental"`) and `featured` (optional bool); see Trust tiers below. `flags_reviewed` (optional list of
 risky-call categories a maintainer has looked at, e.g. `["network"]` for a remote-control plugin; see Validation). Nothing versioned.
@@ -96,7 +97,7 @@ bumping it breaks saved projects), `sha256` of every file. `INSTALL.md` stays fo
 
 ### Gen2 (aarch64)
 A version may also have a `*-mpc-aarch64.zip` on the same release (arch `aarch64`, same id/uid/version). It is listed under the same
-registry entry as `versions[].assets.aarch64` with `gen2: true`; `url`/`sha256` stay the armv7 asset. `catalog.tsv` carries the aarch64 zip in three trailing columns (size, sha256, url). See [GEN2.md](GEN2.md).
+registry entry as `versions[].assets.aarch64` with `gen2: true`; `url`/`sha256` stay the armv7 asset. `catalog.tsv` carries the aarch64 zip in three trailing columns (size, sha256, url). A plugin with only a Gen2 build (`asset_pattern` for `*-mpc-aarch64.zip` alone) is `gen2_only: true`, with `-` in the armv7 columns. See [GEN2.md](GEN2.md).
 
 ### Generated `catalog.json`
 Per plugin (`distribution: release`): registry fields + `versions[]` (newest first, last N kept): `version`, `date`, `url`, `size`, `sha256`,

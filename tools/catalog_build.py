@@ -44,12 +44,17 @@ ZIP_PATTERN = "*-mpc-armv7.zip"
 MAX_SUMMARY = 350   # characters; longer detail belongs in the repo README (docs/CATALOG.md)
 MAX_TAGS = 8
 CATALOG_FILES = {"apps.json", "patches.json", "yanked.json"}   # the only JSON directly in catalog/; plugin entries live in plugins/
-# Entries that predate the limits and are waiting for their authors' feedback on a trim; the trim removes the id from here.
-OVER_LIMIT_OK = {"loop-saboteurxxl", "boris-granular", "effectforce", "evil-tuner-xxl", "interzonexxl", "lxrxxl-bazzline", "lxrxxl-zynth", "lxrxxl",
-                 "plateauxxl", "sturm-tp", "subforce", "surgexxl"}
 OPEN_LICENSES = {"MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Apache-2.0", "GPL-2.0-only", "GPL-2.0-or-later",
                  "GPL-3.0-only", "GPL-3.0-or-later", "LGPL-2.1-only", "LGPL-2.1-or-later", "LGPL-3.0-only",
                  "LGPL-3.0-or-later", "AGPL-3.0-only", "AGPL-3.0-or-later", "MPL-2.0", "Unlicense", "CC0-1.0", "Zlib"}
+
+
+def is_open_license(lic):
+    """An SPDX ID on OPEN_LICENSES, or several joined by AND/OR (a zip that bundles a program under another open licence,
+    e.g. "MIT AND Apache-2.0"): open when every ID in it is."""
+    ids = lic.replace("(", " ").replace(")", " ").split()
+    return bool(ids) and len(ids) % 2 == 1 and all(t in OPEN_LICENSES for t in ids[::2]) \
+        and all(t in ("AND", "OR") for t in ids[1::2])
 
 
 def check_entry(e, fname=None):
@@ -62,7 +67,7 @@ def check_entry(e, fname=None):
         return p
     if not ID.fullmatch(e["id"]):
         p.append("bad id %r" % e["id"])
-    if len(e["summary"]) > MAX_SUMMARY and e["id"] not in OVER_LIMIT_OK:
+    if len(e["summary"]) > MAX_SUMMARY:
         p.append("summary is %d characters, the limit is %d: keep the card short and put the detail in the repo README"
                  % (len(e["summary"]), MAX_SUMMARY))
     if fname and os.path.splitext(os.path.basename(fname))[0] != e["id"]:
@@ -71,7 +76,7 @@ def check_entry(e, fname=None):
         p.append("repo must be owner/name")
     if e["kind"] not in ENTRY_KINDS:
         p.append("kind must be one of %s" % ", ".join(ENTRY_KINDS))
-    if e["license"] not in OPEN_LICENSES and e.get("source_available") is not True:
+    if not is_open_license(e["license"]) and e.get("source_available") is not True:
         p.append("license %r is not on the open-source list: set \"source_available\": true if the source is public "
                  "but the license limits use (shown as a badge), see docs/CATALOG.md" % e["license"])
     if "source_available" in e and not isinstance(e["source_available"], bool):
@@ -89,7 +94,7 @@ def check_entry(e, fname=None):
         p.append("featured must be true or false")
     if "tags" in e and not (isinstance(e["tags"], list) and all(isinstance(t, str) and ID.fullmatch(t) for t in e["tags"])):
         p.append("tags must be a list of lowercase slugs")
-    elif len(e.get("tags", [])) > MAX_TAGS and e["id"] not in OVER_LIMIT_OK:
+    elif len(e.get("tags", [])) > MAX_TAGS:
         p.append("%d tags, the limit is %d: keep the ones people would filter by" % (len(e["tags"]), MAX_TAGS))
     dist = e.get("distribution", "release")
     if dist not in DISTRIBUTIONS:
@@ -172,7 +177,7 @@ def _nonempty_str(v):
 def check_build_yourself(e):
     """Registry rules for a "build-yourself" entry (offline; the tag and script checks need GitHub, see build())."""
     p = []
-    if e["license"] not in OPEN_LICENSES:
+    if not is_open_license(e["license"]):
         p.append("build-yourself needs an open-source SPDX license (source_available is not enough): the source must be "
                  "open even though no built zip is published")
     if e.get("source_available"):
@@ -438,6 +443,10 @@ def build(entries, src, cache, yanked, keep=10, now=None, require_portable=()):
             except Exception as ex:
                 failed.append(({"id": e["id"], "tag": tag, "error": "download/validate failed: %s" % ex}, pub))
                 continue
+            pattern = e.get("asset_pattern", "*-mpc-armv7.zip")
+            gen2_only = "aarch64" in pattern and "armv7" not in pattern   # a plugin with only a Gen2 build (docs/GEN2.md)
+            if not errors and gen2_only and rec["manifest"].get("arch") != "aarch64":
+                errors = ["the entry's asset_pattern is for the Gen2 build, but %s is arch %s" % (asset["name"], rec["manifest"].get("arch"))]
             if not errors and (rec["manifest"]["kind"] == "addin") != (e["kind"] == "addin"):
                 errors = ["the release is a%s but the registry entry's kind is %s" % (
                     "n addin" if rec["manifest"]["kind"] == "addin" else " plugin", e["kind"])]
@@ -449,18 +458,23 @@ def build(entries, src, cache, yanked, keep=10, now=None, require_portable=()):
                 continue
             # Gen2: an optional sibling asset (armv7 -> aarch64 in the pattern) built from the same tag. It must pass the same checks
             # and agree with the armv7 zip on id, uid and version; a bad one is reported but never hides the Gen1 release.
-            rec["assets"] = {"armv7": {k: rec[k] for k in ("sha256", "size") if k in rec} | {"url": asset["browser_download_url"]}}
+            rec["assets"] = {("aarch64" if gen2_only else "armv7"): {k: rec[k] for k in ("sha256", "size") if k in rec} | {"url": asset["browser_download_url"]}}
+            if gen2_only:   # the one zip IS the Gen2 build: url/sha256/size stay it (schema-1 readers), gen2_only tells the clients not to offer it on Gen1
+                rec["gen2"] = True
+                rec["gen2_only"] = True
             pat64 = e.get("asset_pattern", "*-mpc-armv7.zip").replace("armv7", "aarch64")
             # a pattern with no "armv7" in it has no aarch64 sibling (it would match the armv7 zip again)
-            a64 = [x for x in rel.get("assets", []) if fnmatch.fnmatch(x["name"], pat64)] if pat64 != e.get("asset_pattern", "*-mpc-armv7.zip") else []
+            a64 = [x for x in rel.get("assets", []) if fnmatch.fnmatch(x["name"], pat64)] if pat64 != e.get("asset_pattern", "*-mpc-armv7.zip") and not gen2_only else []
             if len(a64) == 1:
                 z64 = os.path.join(cache, "%s-%s.zip" % (e["id"], a64[0]["id"]))
                 try:
                     if not os.path.exists(z64):
                         src.download(a64[0], z64)
                     err64, warn64, rec64 = catalog_check.check(z64, catalog=True, expect_id=e["id"], expect_repo=e["repo"])
+                    # an addin's manifest has no "uid" (that's a VST plugin's concept, for save-file compatibility
+                    # across generations); expect_id above already ties both zips to the same catalog entry
                     if not err64 and (rec64["manifest"]["arch"] != "aarch64" or rec64["version"] != rec["version"]
-                                      or rec64["manifest"]["uid"] != rec["manifest"]["uid"]):
+                                      or rec64["manifest"].get("uid") != rec["manifest"].get("uid")):
                         err64 = ["aarch64 zip is not arch aarch64 with the same version and uid as the armv7 zip"]
                 except Exception as ex:
                     err64 = ["download/validate failed: %s" % ex]

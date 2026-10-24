@@ -195,6 +195,11 @@ static void step_of_option_tests(AEffect *a) {
     a->setP(a, prev, 1.0f); run(a, 1); a->setP(a, prev, 0.0f);
     CHECK(fabsf(a->getP(a, t) - (float)(n - 2) / (n - 1)) < 1e-3f, "step_of %s on %s: steps one option (%.3f)",
           PARAMS[prev].key, PARAMS[t].key, a->getP(a, t));
+    /* a stepper pressed every block asks for an UpdateDisplay each time; the wrapper sends at most one per 50 ms */
+    run(a, 40); updates = 0;
+    for (int k = 0; k < 32; k++) { a->setP(a, next, 1.0f); run(a, 1); a->setP(a, next, 0.0f); }
+    CHECK(updates >= 1 && updates <= 2, "step_of %s pressed every block for 4096 frames: %d UpdateDisplay(s) (want 1-2, one per 50 ms)",
+          PARAMS[next].key, updates);
 }
 
 /* MIDI control (gen_vst.py cc_lines()): CC 20 moves the first Q-Link's parameter, NRPN n sets parameter n, and the
@@ -363,6 +368,42 @@ static void param0_toggle_check(void) {
     c->d(c, 1, 0, 0, 0, 0);
 }
 
+#ifdef POLL_PROBE   /* poc/polltest: the wrapper's polling of text readouts (housekeeping) */
+extern volatile long polltest_hits[41], polltest_on_gets;
+extern volatile int polltest_gen[41], polltest_on;
+static void poll_tests(AEffect *a) {
+    run(a, 80);
+    long before[41], tot = 0, worst = 0;
+    memcpy(before, (const void *)polltest_hits, sizeof before);
+    for (int k = 0; k < 340; k++) {   /* about a second: 340 blocks of 128 frames = 9.9 polling periods */
+        long g0 = 0, g1 = 0;
+        for (int t = 1; t <= 40; t++) g0 += polltest_hits[t];
+        run(a, 1);
+        for (int t = 1; t <= 40; t++) g1 += polltest_hits[t];
+        if (g1 - g0 > worst) worst = g1 - g0;
+    }
+    long shown = 0, hidden = 0;
+    for (int t = 1; t <= 40; t++) { long d = polltest_hits[t] - before[t]; tot += d; if (t <= 30) shown += d; else hidden += d; }
+    CHECK(hidden == 0, "text readouts the layout never shows are not polled (%ld reads of t31-t40)", hidden);
+    CHECK(shown >= 270 && shown <= 330, "30 shown readouts are read about once per 100 ms each (%ld reads in a second, want ~297)", shown);
+    CHECK(worst <= 4, "the polls are spread over the blocks: at most %ld reads in one block (a pass over 30 would be 30)", worst);
+    int shown_changed = 0;
+    updates = 0;
+    polltest_gen[17]++;
+    for (int k = 0; k < 40 && !updates; k++) { run(a, 1); shown_changed = 1; }
+    CHECK(updates > 0 && shown_changed, "a changed readout asks for an UpdateDisplay within 40 blocks (about 116 ms)");
+    int a1 = automated[1];
+    polltest_on = 1;
+    int k = 0;
+    for (; k < 12 && automated[1] == a1; k++) run(a, 1);
+    CHECK(automated[1] > a1, "a list tile's _on change is reported within 12 blocks (reported after %d)", k);
+    polltest_on = 0;
+    long g = polltest_on_gets;
+    run(a, 340);
+    CHECK(polltest_on_gets - g >= 80 && polltest_on_gets - g <= 120, "the one tile is asked every 10 ms (%ld asks in a second, want ~99)", polltest_on_gets - g);
+}
+#endif
+
 int main(void) {
     AEffect *a = VSTPluginMain(host), *b = VSTPluginMain(host);
     CHECK(a && b && a != b, "two instances");
@@ -389,6 +430,14 @@ int main(void) {
         a->setP(a, cont, 0.25f); a->d(a, 7, cont, 0, d, 0);
         CHECK(fabsf(a->getP(a, cont) - 0.25f) <= tol, "set %s 0.25 -> get %.3f (\"%s\")", PARAMS[cont].key, a->getP(a, cont), d);
         CHECK(fabsf(b->getP(b, cont) - 0.25f) > 1e-4f || PARAMS[cont].def == 0.25f, "instance b unaffected");
+        /* a host write (automation, a Q-Link) asks for no UpdateDisplay of its own: MPC rebuilds its parameter screen on
+         * each one (docs/NOTES.md, 2026-10-21). Polled readouts that show the value may still ask, at most every 100 ms. */
+        if (!PARAMS[cont].refresh_display) {
+            run(a, 40); updates = 0;
+            for (int k = 0; k < 32; k++) { a->setP(a, cont, (k & 1) ? 0.3f : 0.7f); run(a, 1); }
+            CHECK(updates <= 2, "32 host writes of %s over 4096 frames: %d UpdateDisplay(s) (want at most the 100 ms poll's)",
+                  PARAMS[cont].key, updates);
+        }
     }
     if (en >= 0) {
         int n = PARAMS[en].nopts;
@@ -519,6 +568,9 @@ int main(void) {
 #endif
     param0_toggle_check();
     step_of_option_tests(a);
+#ifdef POLL_PROBE
+    poll_tests(a);
+#endif
     void *ch = 0; intptr_t n = a->d(a, 23, 0, 0, &ch, 0);
     if (n > 0) {
         b->d(b, 24, 0, n, ch, 0);
