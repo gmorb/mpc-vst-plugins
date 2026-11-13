@@ -184,6 +184,56 @@ func TestGen2InternalDriveIsNvmeWhenSdcardAbsent(t *testing.T) {
 	}
 }
 
+// An MPC One (Gen2) has no NVMe: its user storage is the loopback image mounted at /storage (a Key 37 is the same), and
+// an MPC One's own report showed /storage with ~17 GB free and no /nvme. With /sdcard and /nvme/Synths both absent, the
+// next alternative, /storage/Synths, is the primary internal drive.
+func TestGen2InternalDriveIsStorageOnAMpcOne(t *testing.T) {
+	fd := newFakeDevice(t)
+	storage := filepath.Join(fd.dir, "storage", "Synths")
+	if err := os.MkdirAll(storage, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := fd.cfg()
+	cfg.SynthsDir = filepath.Join(fd.dir, "sdcard", "Synths") // never created
+	nvme := filepath.Join(fd.dir, "nvme", "Synths")           // never created: an MPC One has no NVMe
+	cfg.SynthsAlt = nvme + " " + storage
+	cfg.RootGlobs = shQuote(cfg.SynthsDir) + " " + shQuote(nvme) + " " + shQuote(storage)
+
+	d, err := Dial("127.0.0.1", "secret", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if len(d.Info.Roots) != 1 || d.Info.Roots[0].Path != storage || !d.Info.Roots[0].Primary || d.Info.Roots[0].Label != "Internal drive" {
+		t.Fatalf("/storage/Synths must be the primary internal drive: %+v", d.Info.Roots)
+	}
+	if d.Info.Synths != storage {
+		t.Errorf("DeviceInfo.Synths should be /storage/Synths, got %q", d.Info.Synths)
+	}
+}
+
+// If more than one alternative exists, the first in the list wins (the order says which is the internal drive).
+func TestTheFirstFoundSynthsAltWins(t *testing.T) {
+	fd := newFakeDevice(t)
+	nvme := filepath.Join(fd.dir, "nvme", "Synths")
+	storage := filepath.Join(fd.dir, "storage", "Synths")
+	os.MkdirAll(nvme, 0o755)
+	os.MkdirAll(storage, 0o755)
+	cfg := fd.cfg()
+	cfg.SynthsDir = filepath.Join(fd.dir, "sdcard", "Synths")
+	cfg.SynthsAlt = nvme + " " + storage
+	cfg.RootGlobs = shQuote(cfg.SynthsDir) + " " + shQuote(nvme) + " " + shQuote(storage)
+
+	d, err := Dial("127.0.0.1", "secret", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if d.Info.Synths != nvme {
+		t.Errorf("the first alternative found must win: got %q", d.Info.Synths)
+	}
+}
+
 // When SynthsDir itself is present (Gen1/Force), SynthsAlt is ignored even if it also exists.
 func TestSynthsAltIsIgnoredWhenTheConfiguredPrimaryExists(t *testing.T) {
 	fd := newFakeDevice(t)
@@ -226,5 +276,26 @@ func TestAGen2OnlyVersionIsRefusedOnGen1(t *testing.T) {
 	c, err := got[0].ForArch("aarch64")
 	if err != nil || c.URL != "https://example.com/g2-aarch64.zip" {
 		t.Errorf("Gen2: %+v %v", c, err)
+	}
+}
+
+// A plugin limited to the MPC Sample (registry "devices") installs only on a device whose settings file is the Sample's, with its aarch64 zip.
+func TestDevicesLimitWhereAPluginInstalls(t *testing.T) {
+	c := CatPlugin{Name: "Rack", Version: "0.2.0", Kind: "addin", Devices: []string{"mpc-sample"},
+		Aarch64: &Asset{URL: "https://example.com/rack-aarch64.zip"}}
+	live3 := DeviceInfo{Arch: "aarch64", Settings: "/data/Settings/MPC/MPC.settings"}
+	sample := DeviceInfo{Arch: "aarch64", Settings: "/data/Settings/Akai/MPC Sample/MPC Sample.settings"}
+	if live3.Device() != "" || sample.Device() != "mpc-sample" {
+		t.Fatalf("Device(): %q %q", live3.Device(), sample.Device())
+	}
+	if _, err := c.ForDevice(live3.Arch, live3.Device()); err == nil || !strings.Contains(err.Error(), "only for the MPC Sample") {
+		t.Fatalf("a Live III got a Sample-only addin: %v", err)
+	}
+	if got, err := c.ForDevice(sample.Arch, sample.Device()); err != nil || got.URL != "https://example.com/rack-aarch64.zip" {
+		t.Fatalf("the Sample: %v %q", err, got.URL)
+	}
+	any := CatPlugin{Name: "Tuner", Version: "1.0.0", URL: "https://example.com/t.zip"}
+	if _, err := any.ForDevice("armv7l", ""); err != nil {
+		t.Fatalf("an unlimited plugin was refused: %v", err)
 	}
 }

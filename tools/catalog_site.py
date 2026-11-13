@@ -3,9 +3,9 @@
 
   tools/catalog_site.py [--catalog catalog/dist/catalog.json] [--out catalog/dist/site]
 
-Writes feed.xml (Atom), index.html (one self-contained page: the catalog is embedded, filtering and sorting run in the browser),
-catalog.json (for installers and other tools) and .nojekyll. Deploy the folder with GitHub Pages.
-Guide pages: every catalog/pages/*.md becomes <name>.html (front matter: title, nav, order, summary; Markdown subset in
+Writes feed.xml (Atom; a collection's same-day release is one entry), index.html (one self-contained page: the catalog is embedded, filtering and sorting run in the browser),
+catalog.json (for installers and other tools), p/<id>.html and p/c/<collection>.html (share pages) and .nojekyll. Deploy the folder with GitHub Pages.
+Guide pages: every catalog/pages/*.md becomes <name>.html (front matter: title, nav, order, summary, hidden; Markdown subset in
 tools/catalog_md.py) and joins the menu. Standard library only. Templates and CSS: tools/catalog_site/. See docs/CATALOG.md.
 """
 import argparse
@@ -24,6 +24,9 @@ sys.path.insert(0, HERE)
 import catalog_md  # noqa: E402
 
 
+SHARE_ID = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+
 def read(name):
     return open(os.path.join(HERE, "catalog_site", name), encoding="utf-8").read()
 
@@ -35,7 +38,8 @@ def load_pages(pages_dir):
         meta, src = catalog_md.front_matter(open(f, encoding="utf-8").read())
         name = os.path.splitext(os.path.basename(f))[0]
         pages.append({"slug": name, "title": meta.get("title", name), "nav": meta.get("nav", meta.get("title", name)),
-                      "order": int(meta.get("order", 50)), "summary": meta.get("summary", ""), "body": src})
+                      "order": int(meta.get("order", 50)), "summary": meta.get("summary", ""), "body": src,
+                      "hidden": str(meta.get("hidden", "")).lower() == "true"})   # hidden: no menu entry and no card; linked from the footer
     return sorted(pages, key=lambda p: (p["order"], p["slug"]))
 
 
@@ -114,12 +118,20 @@ def nav_html(pages, current):
     return "".join('<li><a href="%s"%s>%s</a></li>' % (h, ' aria-current="page"' if k == current else "", html_escape(t)) for h, t, k in items)
 
 
+def easy_pin():
+    """The 3.9.1 Plugin Manager stick the desktop installer writes (tools/desktop/g2stick-pin.json: our own autorun stick, one prompt
+    installs and registers the Plugin Manager), for the page's guide."""
+    pin = json.load(open(os.path.join(HERE, "desktop", "g2stick-pin.json")))
+    return json.dumps({"url": pin["url"], "sha256": pin["sha256"], "version": pin["version"],
+                       "need": ["autorun/autorun.json", "autorun/autorun.check", "autorun/open.sh", "autorun/runtime/run.sh", "autorun/runtime/payload.sha256", ".mpc-g2-stick"]})
+
+
 def render_page(page, pages):
     """A guide page as full HTML."""
     body = '<h1>%s</h1>\n<p class="lede">%s</p>\n%s' % (html_escape(page["title"]), catalog_md.inline(page["summary"]), page["html"] if "html" in page else catalog_md.render(page["body"]))
     tpl = read("page.template.html")
     for k, v in (("/*NAV*/", nav_html(pages, page["slug"])), ("/*TITLE*/", html_escape(page["title"])),
-                 ("/*DESC*/", html_escape(page["summary"], quote=True)), ("/*SITE_CSS*/", read("site.css")), ("/*BODY*/", body)):
+                 ("/*DESC*/", html_escape(page["summary"], quote=True)), ("/*SITE_CSS*/", read("site.css")), ("/*GUIDE_JS*/", read("drivewrite.js") + "\n" + read("guide.js").replace("/*EASY_PIN*/null", easy_pin())), ("/*BODY*/", body)):
         tpl = tpl.replace(k, v)
     return tpl
 
@@ -138,25 +150,80 @@ def render(catalog, pages=(), helper_hashes=None, patches_html="", apps_html="",
         .replace("/*N_PATCHES*/", str(n_patches)).replace("/*N_APPS*/", str(n_apps)).replace(marker, data)
 
 
-def atom(catalog, base=""):
-    """Atom feed of the 50 newest non-yanked releases. `base` is the site URL (feed ids fall back to tag: URIs)."""
-    items = []
+def atom(catalog, base="", title="Open MPC - Plugin Catalog: new releases", ident="releases", path="feed.xml"):
+    """Atom feed of the 50 newest non-yanked releases. `base` is the site URL (feed ids fall back to tag: URIs).
+    Members of a collection (catalog.json collections[]) released on the same day and channel are one entry, not one per member."""
+    cols = {c["id"]: c for c in catalog.get("collections", []) if SHARE_ID.match(c.get("id", ""))}
+    groups, items = {}, []
     for p in catalog["plugins"]:
         for v in p["versions"]:
             if not v["yanked"] and v.get("date"):
-                items.append((v["date"], p, v))
-    items.sort(key=lambda t: (t[0], t[1]["name"].lower()), reverse=True)
+                c = cols.get(p.get("collection"))
+                if c:
+                    key = (c["id"], v["date"], v["channel"])
+                    if key not in groups:
+                        groups[key] = (v["date"], c, [])
+                        items.append(groups[key])
+                    groups[key][2].append((p, v))
+                else:
+                    items.append((v["date"], p, v))
+    # a "collection release" that touched one member is that member's own entry
+    items = [(d, x[0][0], x[0][1]) if isinstance(x, list) and len(x) == 1 else (d, c, x) for d, c, x in items]
+    name = lambda t: (t[1].get("title") if isinstance(t[2], list) else t[1]["name"]).lower()
+    items.sort(key=lambda t: (t[0], name(t)), reverse=True)
     out = ['<?xml version="1.0" encoding="utf-8"?>', '<feed xmlns="http://www.w3.org/2005/Atom">',
-           "<title>Open MPC - Plugin Catalog: new releases</title>", "<id>tag:mpc-vst-catalog,2026:releases</id>",
+           "<title>%s</title>" % escape(title), "<id>tag:mpc-vst-catalog,2026:%s</id>" % escape(ident),
            "<updated>%s</updated>" % (items[0][0] + "T00:00:00Z" if items else catalog.get("generated", "1970-01-01T00:00:00Z"))]
     if base:
-        out.append('<link rel="self" href="%s"/>' % escape(base.rstrip("/") + "/feed.xml", {'"': "&quot;"}))
+        out.append('<link rel="self" href="%s"/>' % escape(base.rstrip("/") + "/" + path, {'"': "&quot;"}))
+    q = {'"': "&quot;"}
     for date, p, v in items[:50]:
+        if isinstance(v, list):   # one collection release: p is the collection, v its [(member, version)]
+            beta = " (beta)" if v[0][1]["channel"] == "beta" else ""
+            vers = {x["version"] for _, x in v}
+            title = "%s%s: %d plugins updated%s" % (p["title"], " " + vers.pop() if len(vers) == 1 else "", len(v), beta)
+            link = base.rstrip("/") + "/p/c/%s.html" % p["id"] if base else "https://github.com/%s/releases" % p["repo"]
+            summary = ", ".join("%s %s" % (m["name"], x["version"]) for m, x in sorted(v, key=lambda t: t[0]["name"].lower()))
+            out.append("<entry><title>%s</title><id>tag:mpc-vst-catalog,2026:c/%s@%s%s</id><updated>%sT00:00:00Z</updated>"
+                       '<link href="%s"/><author><name>%s</name></author><summary>%s</summary></entry>' % (
+                           escape(title), escape(p["id"]), date, "-beta" if beta else "", date, escape(link, q),
+                           escape(p["author"]), escape(summary)))
+            continue
         beta = " (beta)" if v["channel"] == "beta" else ""
         out.append("<entry><title>%s %s%s</title><id>tag:mpc-vst-catalog,2026:%s@%s</id><updated>%sT00:00:00Z</updated>"
                    '<link href="%s"/><author><name>%s</name></author><summary>%s</summary></entry>' % (
                        escape(p["name"]), escape(v["version"]), beta, escape(p["id"]), escape(v["version"]), date,
-                       escape(v.get("url") or v.get("source_url", ""), {'"': "&quot;"}), escape(p["author"]), escape(p["summary"])))
+                       escape(v.get("url") or v.get("source_url", ""), q), escape(p["author"]), escape(p["summary"])))
+    out.append("</feed>")
+    return "\n".join(out) + "\n"
+
+
+def collection_atom(c, members, base=""):
+    """feed/c/<id>.xml: the releases of a collection's members, one entry per release day and channel ("<title>: N plugins updated"), as in feed.xml."""
+    cat = {"generated": "1970-01-01T00:00:00Z", "plugins": members, "collections": [c]}
+    return atom(cat, base, title="%s: releases" % c["title"], ident="feed/c/" + c["id"], path="feed/c/%s.xml" % c["id"])
+
+
+def plugin_atom(p, base="", limit=30):
+    """feed/<id>.xml: the releases of one plugin (not yanked, newest first, at most `limit`), so a feed reader can follow just that plugin.
+    A beta is marked in its title. Entry ids match feed.xml's, so a reader that follows both shows each release once."""
+    q = {'"': "&quot;"}
+    rel = [v for v in p.get("versions", []) if not v.get("yanked") and v.get("date")]
+    rel.sort(key=lambda v: (v["date"], v["version"]), reverse=True)
+    rel = rel[:limit]
+    out = ['<?xml version="1.0" encoding="utf-8"?>', '<feed xmlns="http://www.w3.org/2005/Atom">',
+           "<title>%s: releases</title>" % escape(p["name"]), "<id>tag:mpc-vst-catalog,2026:feed/%s</id>" % escape(p["id"]),
+           "<updated>%s</updated>" % (rel[0]["date"] + "T00:00:00Z" if rel else "1970-01-01T00:00:00Z")]
+    if base:
+        out.append('<link rel="self" href="%s"/>' % escape(base.rstrip("/") + "/feed/%s.xml" % p["id"], q))
+        out.append('<link rel="alternate" href="%s"/>' % escape(base.rstrip("/") + "/p/%s.html" % p["id"], q))
+    for v in rel:
+        beta = " (beta)" if v.get("channel") == "beta" else ""
+        note = " ".join(str(v.get("notes") or "").split())[:500] or p.get("summary", "")
+        out.append("<entry><title>%s %s%s</title><id>tag:mpc-vst-catalog,2026:%s@%s</id><updated>%sT00:00:00Z</updated>"
+                   '<link href="%s"/><author><name>%s</name></author><summary>%s</summary></entry>' % (
+                       escape(p["name"]), escape(v["version"]), beta, escape(p["id"]), escape(v["version"]), v["date"],
+                       escape(v.get("url") or v.get("source_url", ""), q), escape(p.get("author", "")), escape(note)))
     out.append("</feed>")
     return "\n".join(out) + "\n"
 
@@ -169,11 +236,17 @@ def tsv(catalog, helpers):
     """catalog.tsv for shell clients (tools/mpc-store.sh, BusyBox sh has no JSON): a header, one '#file' line per helper file
     with its sha256, then one 'plugin' line per stable, non-yanked version of every downloadable (distribution 'release') plugin:
     plugin id version latest kind name skin uid param_compat size sha256 url user_data defer os_compat max_glibc size64 sha256_64 url64
+    requires shares_hooks depends conflicts devices min_os
     (tab separated, '-' when
     empty; defer is 1 when the zip's installer understands -n, 0 when it restarts MPC by itself; os_compat is "2.x,3.x" or "3.x", the MPC OS
     generations the version works on, '-' when the catalog does not say; max_glibc is the newest glibc it needs; the last three are the
     Gen2 (aarch64) zip's size, sha256 and url, '-' when the version has none, and a Gen2 device picks them; a Gen2-only version has '-' in
-    the size, sha256 and url columns above). Clients that read fewer
+    the size, sha256 and url columns above; requires is the author's one line of extra requirements; shares_hooks lists, comma separated, the
+    addins whose newest versions replace some of the same MPC functions as this one where one of the two may not pass the calls on;
+    depends is ';'-joined id:rules:pick:pick64 ("percolator:>=2.0.0:2.1.0:-": rules comma-joined, '*' for any version, pick the version
+    to install when the device has none that fits, per arch, '-' when none; tools/deps.py), conflicts a comma list of ids, devices a comma
+    list of the only devices the plugin is for ("mpc-sample"), '-' for every MPC; min_os the oldest MPC OS its author supports ("3.10.1"),
+    '-' for any the build runs on). Clients that read fewer
     columns ignore the rest. An addin (kind 'addin') has no skin or uid ('-'): it installs to /data/mpc-addins/<id>."""
     out = ["#mpc-catalog-tsv 1"]
     for name, path in helpers:
@@ -191,7 +264,11 @@ def tsv(catalog, helpers):
                    m.get("uid") or "-", v.get("param_compat", 1), "-" if g2only else v["size"], "-" if g2only else v["sha256"],
                    "-" if g2only else v["url"], ",".join(m.get("user_data", [])) or "-",
                    "1" if v.get("defer") else "0", ",".join(v.get("os_compat") or []) or "-", v.get("max_glibc") or "-",
-                   a64.get("size", "-"), a64.get("sha256", "-"), a64.get("url", "-")]
+                   a64.get("size", "-"), a64.get("sha256", "-"), a64.get("url", "-"),
+                   v.get("requires") or m.get("requires") or "-", ",".join(o["id"] for o in p.get("shares_hooks", [])) or "-",
+                   ";".join("%s:%s:%s:%s" % (d["id"], ",".join(op + x for op, x in d["rules"]) or "*", (d.get("pick") or {}).get("armv7", "-"),
+                                             (d.get("pick") or {}).get("aarch64", "-")) for d in v.get("depends", [])) or "-",
+                   ",".join(v.get("conflicts", [])) or "-", ",".join(p.get("devices", [])) or "-", p.get("min_os") or "-"]
             out.append("\t".join(_f(x) for x in row))
     return "\n".join(out) + "\n"
 
@@ -207,10 +284,7 @@ def redirect_page(target):
             '<body><p>This page moved to <a href="%s">%s</a>.</p></body></html>\n' % (t, t, t, t))
 
 
-SHARE_ID = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-
-
-def share_page(p):
+def share_page(p, col=None):
     """p/<id>.html: the plugin's link for sharing. Link previews (Telegram, Slack, X, Facebook) read only the HTML at a URL, never
     the #p=<id> hash and never JS, so this page carries the card's title, summary and screenshot as Open Graph tags; a browser is
     sent on to the popup by script. Not a meta refresh: Facebook's crawler follows that and would read the catalog page instead."""
@@ -222,11 +296,50 @@ def share_page(p):
     meta += [("og:image", shot), ("og:image:alt", p["name"] + " screenshot")] if shot else []
     tw = [("twitter:card", "summary_large_image" if shot else "summary"), ("twitter:title", title), ("twitter:description", p.get("summary", ""))]
     tw += [("twitter:image", shot)] if shot else []
+    # a collection member says which collection it belongs to (the page a crawler or a browser without JS sees)
+    crumb = ('<nav class="crumb" aria-label="Breadcrumb"><p>Part of <a href="c/%s.html">%s</a></p></nav>' % (e(col["id"]), e(col["title"]))
+             if col and SHARE_ID.match(col.get("id", "")) else "")
+    return ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><title>%s - Open MPC Plugin Catalog</title>'
+            '<meta name="description" content="%s">%s%s<link rel="alternate" type="application/atom+xml" title="%s: releases" href="../feed/%s.xml"><script>location.replace(%s)</script></head>'
+            '<body>%s<p><a href="%s">%s in the Open MPC Plugin Catalog</a></p></body></html>\n'
+            % (e(title), e(p.get("summary", "")), "".join('<meta property="%s" content="%s">' % (k, e(v)) for k, v in meta),
+               "".join('<meta name="%s" content="%s">' % (k, e(v)) for k, v in tw), e(p["name"]), e(p["id"]), json.dumps(target), crumb, e(target), e(p["name"])))
+
+
+KIND_GROUPS = (("instrument", "Instruments"), ("midi", "MIDI"), ("effect", "Effects"), ("addin", "Addins"))
+
+
+def tab_kind(p):
+    """The site tab a plugin is listed under: an instrument with role "midi" is under MIDI."""
+    return "midi" if p.get("kind") == "instrument" and p.get("role") == "midi" else p.get("kind")
+
+
+def collection_page(c, members):
+    """p/c/<id>.html: a collection's link for sharing, like share_page: Open Graph tags (the collection's screenshot, else its first
+    member's) and a script that opens the collection view (index.html#c=<id>, members grouped by kind with checkboxes for the
+    install list). The body lists the members grouped by kind, each linking to its own p/<id>.html, for crawlers and no-JS readers."""
+    e = lambda x: html_escape(str(x), quote=True)
+    target = "../../index.html#c=" + c["id"]
+    title = "%s by %s" % (c["title"], c["author"])
+    shots = [c.get("screenshot", "")] + [m.get("screenshot", "") for m in members]
+    shot = next((str(x) for x in shots if str(x or "").startswith("https://")), "")
+    desc = "%s (%d plugins)" % (c.get("summary", ""), len(members))
+    meta = [("og:type", "website"), ("og:site_name", "Open MPC - Plugin Catalog"), ("og:title", title), ("og:description", desc)]
+    meta += [("og:image", shot), ("og:image:alt", c["title"] + " screenshot")] if shot else []
+    tw = [("twitter:card", "summary_large_image" if shot else "summary"), ("twitter:title", title), ("twitter:description", desc)]
+    tw += [("twitter:image", shot)] if shot else []
+    body = []
+    for k, label in KIND_GROUPS:
+        ms = [m for m in members if tab_kind(m) == k]
+        if ms:
+            body.append('<h2>%s (%d)</h2><ul>%s</ul>' % (label, len(ms), "".join(
+                '<li><a href="../%s.html">%s</a>: %s</li>' % (e(m["id"]), e(m["name"]), e(m.get("summary", ""))) for m in ms if SHARE_ID.match(m.get("id", "")))))
     return ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><title>%s - Open MPC Plugin Catalog</title>'
             '<meta name="description" content="%s">%s%s<script>location.replace(%s)</script></head>'
-            '<body><p><a href="%s">%s in the Open MPC Plugin Catalog</a></p></body></html>\n'
-            % (e(title), e(p.get("summary", "")), "".join('<meta property="%s" content="%s">' % (k, e(v)) for k, v in meta),
-               "".join('<meta name="%s" content="%s">' % (k, e(v)) for k, v in tw), json.dumps(target), e(target), e(p["name"])))
+            '<body><h1>%s</h1><p>%s</p>%s<p><a href="%s">%s in the Open MPC Plugin Catalog</a> &middot; <a href="https://github.com/%s">Source</a></p></body></html>\n'
+            % (e(title), e(desc), "".join('<meta property="%s" content="%s">' % (k, e(v)) for k, v in meta),
+               "".join('<meta name="%s" content="%s">' % (k, e(v)) for k, v in tw), json.dumps(target), e(c["title"]), e(c.get("summary", "")),
+               "".join(body), e(target), e(c["title"]), e(c.get("repo", ""))))
 
 
 def main():
@@ -243,6 +356,9 @@ def main():
         raise SystemExit("unsupported catalog schema %r" % catalog.get("schema"))
     os.makedirs(a.out, exist_ok=True)
     pages = load_pages(a.pages)
+    img = os.path.join(a.pages, "img")
+    if os.path.isdir(img):
+        shutil.copytree(img, os.path.join(a.out, "img"), dirs_exist_ok=True)
     patches_doc = None
     if os.path.isfile(a.patches):   # the installer app reads it from next to catalog.json; a manifest that fails its checks is not published
         import patch_check
@@ -280,12 +396,21 @@ def main():
     open(os.path.join(a.out, "catalog.tsv"), "w", encoding="utf-8", newline="\n").write(tsv(catalog, helpers))
     for old, new in MOVED_PAGES.items():   # links to pages that were merged into another still work
         open(os.path.join(a.out, old), "w", encoding="utf-8").write(redirect_page(new))
-    os.makedirs(os.path.join(a.out, "p"), exist_ok=True)
+    os.makedirs(os.path.join(a.out, "p", "c"), exist_ok=True)
+    cols = {c["id"]: c for c in catalog.get("collections", []) if SHARE_ID.match(c.get("id", ""))}
+    os.makedirs(os.path.join(a.out, "feed"), exist_ok=True)
     for p in catalog["plugins"]:
         if SHARE_ID.match(p.get("id", "")):
-            open(os.path.join(a.out, "p", p["id"] + ".html"), "w", encoding="utf-8").write(share_page(p))
+            open(os.path.join(a.out, "p", p["id"] + ".html"), "w", encoding="utf-8").write(share_page(p, cols.get(p.get("collection"))))
+            open(os.path.join(a.out, "feed", p["id"] + ".xml"), "w", encoding="utf-8").write(plugin_atom(p, a.base_url))
+    os.makedirs(os.path.join(a.out, "feed", "c"), exist_ok=True)
+    for c in cols.values():   # p/c/<id>.html, the collection's share page (catalog.json collections[]), and feed/c/<id>.xml, its releases
+        members = [p for p in catalog["plugins"] if p.get("collection") == c["id"]]
+        open(os.path.join(a.out, "p", "c", c["id"] + ".html"), "w", encoding="utf-8").write(collection_page(c, members))
+        open(os.path.join(a.out, "feed", "c", c["id"] + ".xml"), "w", encoding="utf-8").write(collection_atom(c, members, a.base_url))
     open(os.path.join(a.out, ".nojekyll"), "w").close()
-    print("%s (%d plugins, %d guide pages)" % (os.path.join(a.out, "index.html"), len(catalog["plugins"]), len([p for p in pages if not p.get("hidden")])))
+    print("%s (%d plugins, %d collections, %d guide pages)" % (os.path.join(a.out, "index.html"), len(catalog["plugins"]), len(cols),
+                                                               len([p for p in pages if not p.get("hidden")])))
 
 
 if __name__ == "__main__":

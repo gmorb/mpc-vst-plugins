@@ -58,6 +58,8 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
       and whole numbers"), which is quick on a short range; the data wheel is right. Three prototypes of slowing it failed (NOTES). First
       thing to try: how the stock plugins (AIR, Akai) respond to the same Q-Link on a stepped param, by logging what MPC sends them
       and what they read back, then match that.
+- [ ] **Desktop VST3, next:** use the editor's mouse input in a DAW by hand (it loads and draws in Reaper), ship engine data (DrumGizmo kits) inside the bundle for
+      `MODULE_SUBDIR` ports, keyboard input for text fields, a Windows editor, running the Windows build on a real host, macOS (docs/DESKTOP_VST3.md, "Windows").
 - [ ] **A reference port on `engine.h` + `params.json`** (e.g. `poc/synth.c` turned into a full example), so
       the repo shows a port that needs no adapter.
 
@@ -68,9 +70,34 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
       catalog-ready from its first commit.
 - [ ] **Update notices honour `param_compat`** (a major bump warns that saved projects will change).
 - [ ] **Catalog quality plan** (trust tiers, a visible bar, new entries start Experimental, trusted verifiers): steps in `docs/CATALOG_QUALITY.md`.
+- [x] **Declared conflicts and dependencies** (2026-10-26, offline; docs/CATALOG_SPEC.md "Dependencies"): `depends` / `conflicts` in the
+      manifest or the registry entry; the builder hides what can't be satisfied, both installers resolve and refuse, the site links them.
+      Still prose: conflicts with things outside the catalog ("disable the legacy Force Link Audio addon first"). Next: try it on a device
+      once a registry dependency is published (Percolator Out bringing Percolator along).
+- [ ] **Unsupported plugins** (plan 2026-11-09, `docs/CATALOG_QUALITY.md` step 5: act on breakage, never on age): [x] 5a maintenance
+      row and bar items from each repo's issues (2026-11-09, offline); [~] 5b losing Verified on confirmed breakage only (author label, maintainer list, or 3 people on one device and OS with 30 days of silence; dry run built 2026-11-09, offline; next: read Works for me, then go live);
+      [ ] 5c Experimental after confirmed breakage, notice and 30 days; yanking stays manual; delisting only for a gone repo that is broken.
 - [ ] **Announce to the community** and collect what people ask for before building more.
+- [ ] **Collections in the installers.** The site groups collections (live 2026-11-02, docs/CATALOG.md "Collections"); the desktop
+      installer app, the Plugin Manager and `mpc-store.sh list` still list members one by one (they can read `collections[]` in `catalog.json`).
 
 ## Companion apps (catalog)
+- [ ] **Install page: plugins and their ROMs onto a stick from the browser.** The page writes the Plugin Manager today (Write to USB,
+      `tools/catalog_site/drivewrite.js`); plugins with ROMs still need the installer app. Needs same-site copies of plugin zips (size and
+      bandwidth: see docs/CATALOG.md "Install page writes drives") or the user's own downloads.
+- [ ] **One Plugin Manager download for every MPC on 3.10.1.** Swap the Gen1/Gen2 folder zips for the release's SDK-format zip once it
+      is device-tested (Live III, then a Gen1 on 3.10.1).
+- [ ] **Rebuilding the Plugin Manager re-pins three things:** the folder zips in `catalog/downloads.json`, the 3.9.1 stick (its
+      checksum file covers the zips; `tools/usb_g2/build_stick.py` needs a stock 3.9.1 firmware file) and `tools/desktop/g2stick-pin.json`.
+      A script that does all three from one release would stop them drifting.
+- [ ] **SDK-format plugins on MPC OS 3.9.1**, by converting them into our release format (decided 2026-11-13: one install format, so
+      every Plugin Manager, installer and stick already out there installs them). Done: `tools/sdk_release.py` (SDK folder -> per-build
+      zips, SDK layout kept). `vst-release.yml` `sdk_project` input (builds with `vendor/`, converts, drafts). Catalog converts a release that has only an `*-mpc-sdk.zip` (docs/CATALOG.md). Registry `min_os: "3.10.1"` opt-out (catalog, site, TSV; Plugin Manager hides it on 3.9.1). To do:
+      device test with SimpleSynth on a 3.9.1 Force and a 3.10.1 Live III.
+- [ ] **Plugin Manager: empty MPC's skin image cache on load, if needed.** Today it is emptied only by APPLY (apply.sh, before MPC
+      starts again) or a power cycle; the Manager just warns at 85%. On a Live III, reloading skin-heavy plugins many times filled the
+      cache to 100% and parts of skins drew black; APPLY cleared it (device, 2026-11-03). Build only if users hit it: e.g. delete
+      the `filmstrips/temp_*.img` files when the Manager loads and the volume is past 85% (see NOTES.md, 2026-10-28).
 - [ ] A custom domain for the site (the old `github.io` URL is hardcoded in `tools/mpc-store.sh`, the page template's `SITE` fallback, the desktop app and the README).
 
 - [x] **Installer app: version check** (built 2026-10-14, host tests only; in 0.5.5). Original ask: Tell the user when a newer `desktop-v*` release exists (asked for 2026-10-14). Ideas: compare the
@@ -94,7 +121,18 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
 - [ ] **Stock, unmodded MPC and other models:** the ALSA MIDI-out port (`poc/midiport.c`) without MockbaMod,
       and `tools/probe_device.sh` after firmware updates. Needs the hardware.
 
+- [ ] **The 3.9.1 Plugin Manager stick on more models.** Device-tested on Forces and a Live III (MPC OS 3.9.1); offline-tested for
+      the MPC One/Key loop-image layout and Gen2 `/nvme`. Wanted: Live, Live II, X, One, Key 61/37, One G2, Key G2 (send
+      `g2-install-result.txt`).
+- [ ] **The turn-on-SSH stick on MPC OS 2.x.** Offered by the installer for 2.x without SSH, built from the user's own firmware; whether
+      2.x has the same stock USB-script reader is not yet known.
+
 ## Done
+- [x] **Catalog collections** (live 2026-11-02, PR #686): a set of plugins from one repo is one card with its own view (members by
+      kind, install ticks, Pick all) and one feed entry per release; more than 5 entries by one author in one repo need one. docs/CATALOG.md.
+- [x] **Desktop VST3 build** (2026-10-30, offline): `tools/build_vst3.sh` builds any generic-wrapper port as a Linux VST3
+      (`wrapper/vst3_wrap.c`, resampling, latency, bypass, presets, MIDI CC mapping, state), `tools/test_vst3.sh` tests it. Its editor
+      (`wrapper/vst3_editor.c`) draws the port's MPC skin in the plugin window on Linux/X11, with mouse input. docs/DESKTOP_VST3.md.
 - [x] Community catalog and installer (2026-10-02): https://sd88me.github.io/mpc-vst-plugins/ lists the community's plugins
       (registry in `catalog/plugins/`, releases read from GitHub nightly, every zip checked, per-version "Tested on", all-time
       downloads, Atom feed), with guides and a one-line shell install (`mpc-store.sh`). The MPC plugin installer app
@@ -132,3 +170,9 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
       screen (blank), not just left unrendered. Not usable; `look=native` now refuses at build time
       (`tools/skin_assets.py`) instead of building a broken skin (the filmstrip-fake `meter` stays the
       only way to show a level). See NOTES.md.
+
+## Organisation (owner steps)
+- [ ] **Private vulnerability reporting:** open-mpc/mpc-vst-plugins → Settings → Code security → Private vulnerability reporting (POLICY.md "Security").
+- [ ] **A second owner** for the open-mpc org (People → role Owner), listed in MAINTAINERS.md.
+- [ ] **POLICY.md decisions:** the three DECIDE items (wording about Akai, the delisting deadline, how the rules change).
+

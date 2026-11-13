@@ -5,6 +5,10 @@ checksum and device-verification status, that stays correct without anyone editi
 
 ## Principles (what keeps it low maintenance)
 1. **No server, no database, no accounts.** A static site on GitHub Pages, built from one generated `catalog.json`.
+   Addresses (2026-11-01): the Plugin Manager reads `https://open-mpc.github.io/catalog.json` (the OpenMPC org's Pages repo
+   `open-mpc/open-mpc.github.io`) and falls back to `https://sd88me.github.io/mpc-vst-plugins/catalog.json`. Older managers
+   only know the second, so both must serve the same file. The `mirror-org` job in `.github/workflows/catalog.yml` copies each
+   build's whole site there (since 2026-11-01 `https://open-mpc.github.io/` is the address users go to) (needs the `OPENMPC_PAGES_TOKEN` secret; skipped without it).
 2. **Authors register once, never per release.** A plugin's catalog entry is a tiny file pointing at its GitHub repo.
    Versions, URLs and checksums are *discovered* from the repo's Releases by a scheduled job.
 3. **The zip is the source of truth, not the registry.** Every release zip carries a machine-readable manifest
@@ -19,7 +23,18 @@ checksum and device-verification status, that stays correct without anyone editi
 6. **The catalog never hosts or links a build that contains someone else's firmware.** A port whose DSP is compiled
    from the user's own firmware cannot publish a zip, so it lists as **build-yourself** (below): open source, no
    download, no checksum, a build command and the user's own files it needs. This is a separate distribution type;
-   the checks for normal `release` entries are unchanged.
+   the checks for normal `release` entries are unchanged. Build-yourself is only for ports of **discontinued**
+   products (2026-10-29). A port of firmware from a product still on sale is not listed in either form without the
+   manufacturer's written permission; the author can write an independent engine instead (see #612).
+
+## Keeping the old address alive after a move (tools/catalog_mirror.py, 2026-10-20, offline tests only)
+After the repo changes owner the old Pages address stops answering, but installed copies of the desktop app and `mpc-store.sh` still
+read it. `tools/catalog_mirror.py` turns the built site into a copy for that address: the data files (`catalog.json`, `catalog.tsv`,
+`patches.json`, `apps.json`, `feed.xml`, `mpc-store.sh`, `sync.sh`, `plugin_list.awk`) verbatim, every HTML page as a redirect to the
+same page at the new address. The `mirror` job of `catalog.yml` commits it to the repo named in the variable `CATALOG_MIRROR_REPO`
+(for example `sd88me/sd88me.github.io`, whose Pages serves `<folder>/` at `sd88me.github.io/<folder>/`; checked with a scratch folder on
+2026-10-20). It does nothing while that variable is empty. Setup: a deploy key with write access on the hosting repo, its private
+half in the secret `MIRROR_DEPLOY_KEY`; optional variable `CATALOG_MIRROR_DIR` (default: this repo's name).
 
 ## Architecture
 ```
@@ -34,16 +49,55 @@ vst-release.yml  --release-->   nightly + on-dispatch workflow:       device scr
 ### Registry entry (`plugins/<id>.json`, hand-written once)
 `id`, `name`, `author`, `repo` (owner/name), `kind` (instrument | effect), `license` (an SPDX ID, or IDs joined by `AND`/`OR` when the zip
 bundles a program under another licence, e.g. `MIT AND Apache-2.0`: open when every ID is), `summary`, `screenshot`
-(optional `https://` URL; the site ignores anything else), `asset_pattern` (default `*-mpc-armv7.zip`), `homepage` (optional),
+(optional `https://` URL; the site ignores anything else), `asset_pattern` (default `*-mpc-armv7.zip`), `homepage` (optional), `youtube` (optional, a `youtube.com` or `youtu.be` https link to a video or playlist about the plugin: the
+catalog page's plugin popup shows a Video button next to Copy link; anything else fails the registry check),
 `tier` (optional, only `"experimental"`) and `featured` (optional bool); see Trust tiers below. `flags_reviewed` (optional list of
-risky-call categories a maintainer has looked at, e.g. `["network"]` for a remote-control plugin; see Validation). Nothing versioned.
+risky-call categories a maintainer has looked at, e.g. `["network"]` for a remote-control plugin; see Validation), `collection` (optional, see
+Collections below), `devices` (optional: the only devices it is for, today just `"mpc-sample"`; see "Device-limited entries" below),
+`min_os` (optional, only `"3.10.1"`: the author supports only MPC OS 3.10.1 and later. The Plugin Manager does not offer it on 3.9.1 and
+earlier, the site shows "MPC OS 3.10.1 and later", and `catalog.json` / `catalog.tsv` (25th column, `-` when unset) carry it. Older Plugin
+Managers and installers don't know the field and still offer it there, where it installs the 3.9.1 way: an opt-out from support, not a
+block. Added 2026-11-13). Nothing versioned.
+`catalog/added.json` (`{"<id>": "YYYY-MM-DD"}`) records when each entry joined the catalog, for the site's "Newest in catalog" sort. A
+maintainer adds a line when merging a new entry (not the contributor, so PRs don't conflict on one file); an entry without a line uses
+the date of its oldest release. Backfilled 2026-10-24 from the first commit that added each registry file.
 
 Length limits (checked by `tools/catalog_build.py`): `summary` at most 350 characters and `tags` at most 8, so cards and the page stay
 readable. Put the full feature list in the repo README. Maintainers may edit a summary or tags for length and consistency, but do not
 change claims about testing or safety without the author.
 
+### Collections (2026-11-02; live 2026-11-02 (catalog build #770, checked on the published catalog.json, feed.xml and page))
+One repo can publish many entries (22 from `mmiroshnikov/mpc-airwindows`, 20 more in PR #685 from `Bombest-Audio/op1-fx`), which floods
+the grid. A **collection** shows them as one card. `catalog/collections/<id>.json` holds `id`, `title`, `author`, `repo`, `summary` and an
+optional `https://` `screenshot`; each member entry adds `"collection": "<id>"`. Members are otherwise unchanged: own release, versions,
+checks, `tested.json` tier, uid and download; `catalog.tsv`, the installer and `catalog_check.py` do not know about collections.
+- **Rules** (`catalog_build.py`, `load_collections`): the collection file must exist, every member's `repo` must equal the collection's, a
+  collection needs at least 2 members, and its `summary` has the plugin limit (350 characters).
+- **N-entry rule (N = 5, `MAX_UNCOLLECTED`):** more than 5 entries sharing a `repo` **and `author`** without a `collection` fails
+  `--check-registry`, and so CI. Counted per author so that a repo hosting a few ports credited to different authors is left alone:
+  `sd88me/mpc-vst-TR-MPC` lists 4 drum machines by athousanddetails beside 2 plugins by sd88me, which are not one set and stay separate
+  cards. When the rule was added (2026-11-02) two repos were over it and got collections: `mpc-airwindows` (22 entries) and
+  `airwindows-collection` (`sd88me/mpc-vst-airwindows`, 11).
+- **First live build (2026-11-02, run #770):** 182 plugins on 148 cards, both collections listed (Airwindows Singles: 22 effects, Verified;
+  Airwindows Collection: 11 effects, Listed), the TR-MPC entries as separate cards, `catalog.tsv` unchanged, the Airwindows Collection 0.1.0
+  release as one feed entry ("11 plugins updated"), `p/c/<id>.html` share pages and the "Part of" breadcrumb present. Checked on the copy the
+  build pushes to `open-mpc/open-mpc.github.io`, loaded in headless Chromium.
+- **`catalog.json`:** `collections[]` with members, kind counts, best member tier, total downloads (`docs/CATALOG_SPEC.md`).
+- **Site:** one card per collection (its screenshot, else a collage of up to four member screenshots; title, author, Collection badge,
+  "13 instruments · 7 effects", best tier, the first member chips and +N, View all and Source). It shows under each tab its members cover,
+  with counts and chips for that kind, and sorts by its best member tier and its most downloaded member's downloads. (2026-11-05, offline: grid cards fold their Details by default and show downloads in a bar under the title; a collection's community figures and downloads are its best member's, not a sum, 2026-11-06: a sum let a 100-plugin collection outrank any single plugin; `catalog.json` still carries the total.) Search and filters match the members and list the ones that
+  match; a search for the collection's title lists all of them. `#c=<id>`, shared as `p/c/<id>.html`, opens the collection view:
+  members by kind, each with its install checkbox and a Pick all per group, feeding the same install list. A member's popup and its
+  `p/<id>.html` say "Part of <title>". Entries without a collection look as before.
+- **Feed:** members of a collection released on the same day and channel are one `feed.xml` entry ("<title>: N plugins updated").
+- **Per-plugin feeds (2026-11-05, offline):** `feed/<id>.xml` is an Atom feed of one plugin's releases (not yanked, newest first, at most 30, a beta
+  marked, the release notes as the summary), with the same entry ids as `feed.xml`. A plugin's popup has a "Follow updates" button linking to it,
+  and its share page advertises it with a `<link rel="alternate">`. A reader gets a new entry for every release or revision. A collection has its own feed,
+  `feed/c/<id>.xml` (same-day member releases are one entry, as in `feed.xml`), linked from the collection popup's "Follow updates" button.
+
 ### Distribution types
-`distribution` in the registry entry: `release` (default; everything above) or `build-yourself`.
+`distribution` in the registry entry: `release` (default; everything above) or `build-yourself`. `build-yourself` is limited to
+ports of discontinued products (rule 6 above); today's two entries, Monomodule and Machinemodule, are discontinued Elektron hardware.
 
 A **build-yourself** plugin's build embeds firmware-derived code or data (for example the DSP statically recompiled from
 the user's own Elektron OS file, plus ROM samples), so the built `.so` and its installer zip can never be published
@@ -74,13 +128,20 @@ list. Each plugin gets a `tier` in `catalog.json`, computed by `catalog_build.py
 (`"tier"` accepts only `"experimental"`); `"featured": true` is a maintainer pick, ignored while experimental. The site hides
 Experimental by default (the Tier filter and a "Show them" link reveal it), badges Verified and Experimental cards only (2026-10-11:
 Listed is the unlabelled middle, still computed and filterable as "Not yet verified"), and the default sort,
-"Recommended", is featured, then tier, then (2026-10-14, offline) Verified on both generations before one, newest hardware-test
-date, downloads, and finally name. Verified is split by device generation (2026-10-12, offline: unit tests and a
+"Recommended", is featured, then evidence points, with experimental always last (2026-11-05, offline; maintainer decision: people reporting a plugin works count
+for more than the author's own record). A complete Verified plugin (every generation it ships verified: a Gen1-only build tested on Gen1, a
+Gen2-only build tested on Gen2, or a dual build tested on both) is worth 3 points, a dual build verified on one generation 1.5, Listed 0.
+With the community service reachable (public since 2026-11-06), each person who reported the newest release working adds 1, a person who only reported an older release
+0.25, and each like 0.1, so 4 people confirming a Listed plugin beat a Verified badge with no reports, and 2 do not. Without community counts the
+order is the old one (complete Verified, partly verified, Listed). Ties go to the newest hardware-test date, downloads, and finally name. Verified is split by device generation (2026-10-12, offline: unit tests and a
 headless-browser check): `verified_on` in `catalog.json` lists `gen1` and/or `gen2` (`verified_on` in `catalog_build.py`). A `tested.json`
 entry whose `device` names Gen2 counts for `gen2`, and only when that version has an aarch64 build; any other entry counts for `gen1`.
 The card shows one badge per generation ("Verified Gen1", "Verified Gen2"), the Tier filter has "Verified on Gen1" and
 "Verified on Gen2", and the quality bar asks for a Gen2 test (`tested-gen2`) when a Gen2 build has none. The tier itself stays one
-value (verified on either generation), so the sort is unchanged. Catalogs built before the field read a verified plugin as Gen1. Catalogs built before the field read as `listed`. Deliberately not done:
+value (verified on either generation), so the sort is unchanged. Catalogs built before the field read a verified plugin as Gen1.
+Since 2026-11-05 (offline: unit tests and the headless-browser check) the MPC Sample has its own: a `tested.json` entry whose `device`
+names the MPC Sample counts for `sample` (on a version with an aarch64 build, which is what the Sample runs), not for `gen1` as before,
+with a "Verified Sample" badge and a "Verified on MPC Sample" Tier filter option. Catalogs built before the field read as `listed`. Deliberately not done:
 star ratings, comments, upvotes (few users, needs a backend and moderation; if wanted later, compatibility reports through
 GitHub Discussions that feed `tested.json` fit the static model better, with any vote count only a tiebreaker inside a tier).
 
@@ -88,7 +149,12 @@ GitHub Discussions that feed `tested.json` fit the static model better, with any
 `catalog_build.py` lists, per plugin, the bar items it does not meet yet (`bar_missing`, texts in `catalog.json` `bar`; `BAR` and
 `bar_of`): no stable release, no screenshot, no skin, CPU verdict FAIL, no CPU bench figure, no `tested.json` entry for the newest
 release. The card shows them in a collapsed "To improve this listing". Informational only: it changes no tier and hides nothing.
-The build log prints how many plugins miss each item. Plan and next steps: `docs/CATALOG_QUALITY.md`.
+The build log prints how many plugins miss each item. Since 2026-11-09 (offline) two items come from the plugin's GitHub repo:
+`issues-unanswered` (an open issue waiting more than 60 days with no reply) and `archived`; the same read gives the popup's
+Maintenance row (`maintenance` in `catalog.json`). Plan and next steps: `docs/CATALOG_QUALITY.md` (step 5, unsupported plugins).
+**Breakage dry run (2026-11-09, offline):** the build also writes `breakage.json`, the Verified plugins whose newest version would lose
+Verified under step 5b (confirmed by the author's label, `catalog/confirmed.json`, or 3 people on one device and MPC OS with 30 days of
+silence). It changes nothing yet.
 
 ### Zip manifest (`mpc-plugin.json`, generated by `release.py`)
 `schema`, `id`, `uid` (VST uid), `name`, `version`, `so` file, `skin` dir, `kind`, `armv7`, `max_glibc`, `cpu`
@@ -99,6 +165,15 @@ bumping it breaks saved projects), `sha256` of every file. `INSTALL.md` stays fo
 A version may also have a `*-mpc-aarch64.zip` on the same release (arch `aarch64`, same id/uid/version). It is listed under the same
 registry entry as `versions[].assets.aarch64` with `gen2: true`; `url`/`sha256` stay the armv7 asset. `catalog.tsv` carries the aarch64 zip in three trailing columns (size, sha256, url). A plugin with only a Gen2 build (`asset_pattern` for `*-mpc-aarch64.zip` alone) is `gen2_only: true`, with `-` in the armv7 columns. See [GEN2.md](GEN2.md).
 
+### Releases with only an Akai SDK zip (2026-11-13, offline: unit tests)
+A registry entry (no `asset_pattern`) whose release carries only `*-mpc-sdk.zip`, Akai's one-folder format, is converted by
+`catalog_build.py` with `tools/sdk_release.py` into the per-build zips every client installs (MPC OS 3.9.1 registration included; the
+SDK zip is still listed under `assets.sdk`). The converted zips are uploaded once by the catalog workflow to the `sdk-converted` release
+of this repo (`<id>-<version>-<asset id>-mpc-<arch>.zip`) and reused from there by every later build, so the listed URLs and checksums
+never change. A conversion that fails is reported like any bad release. A Gen2-only SDK release (no 32-bit binary) is refused: release it
+with `vst-release.yml` `sdk_project` and `asset_pattern "*-mpc-aarch64.zip"`. Developers who run `vst-release.yml` with `sdk_project`
+publish the per-build zips themselves and are not converted.
+
 ### Generated `catalog.json`
 Per plugin (`distribution: release`): registry fields + `versions[]` (newest first, last N kept): `version`, `date`, `url`, `size`, `sha256`,
 `channel` (stable, or beta for GitHub prereleases), `notes` (release body), `param_compat`, `yanked`,
@@ -107,7 +182,7 @@ Versioned schema (`"schema": 1`) so the site and installers can evolve without b
 
 ### Validation (CI, per new version)
 Zip layout matches the spec; manifest matches the registry (`id`, `uid`, repo); `.so` is ARM ELF with
-GLIBC <= 2.36 (above 2.32 it is listed as MPC OS 3.x only); `install.sh`/`uninstall.sh`/`plugin_list.awk` are identical to this repo's canonical copies (or a
+GLIBC <= 2.36 for armv7 (above 2.32 it is listed as MPC OS 3.x only) and <= 2.39 for aarch64 (Gen2 runs MPC OS 3.x only); `install.sh`/`uninstall.sh`/`plugin_list.awk` are identical to this repo's canonical copies (or a
 diff is flagged for manual review); checksums match; `uid` and `file=` name don't collide with any other catalog
 entry; license file present. This reuses code already in `tools/release.py`.
 Risky calls (2026-10-11, offline: `tools/test_catalog.py`): every ELF file in the zip has its imported functions read from
@@ -121,10 +196,57 @@ categories ("Catalog: <id> flagged for review (network, runs programs)"). Closin
 version with the same categories opens nothing, new categories open a new issue (2026-10-11, offline tests only; the first run
 opened one issue per version, 70 in all, which this replaced).
 
+### Device-limited entries (2026-11-05, offline: unit tests, Go tests, the site browser test)
+The MPC Sample (AC50) runs MPC OS on aarch64, so it takes a release's Gen2 zip, but it is not a Gen2 MPC: an addin written for its
+screen (the draw handler, the rack) loads and does nothing on a Live III. A registry entry can say so with `"devices": ["mpc-sample"]`
+(`DEVICES` in `catalog_build.py`; unknown ids are refused). Then:
+- `catalog.json` carries `devices`, and `catalog.tsv` a `devices` column (24th, comma list, `-` for every MPC).
+- The site shows "MPC Sample only" in place of the Gen2 tag, and a Devices row in the popup. Its one download button is named for
+  the device, "Download (MPC Sample)", with no Gen1 button (2026-11-06, offline: the site browser test). The card's badge is the device
+  label, so its `tags` should not repeat it (no `mpc-sample` tag).
+- The catalog page has a device switch above the section tabs, "MPC / Force" | "MPC Sample", each with its catalog-wide count (2026-11-06,
+  offline: the site browser tests). MPC / Force (the default) hides the entries limited to the Sample. MPC Sample lists only entries with
+  evidence for it (maintainer decision 2026-11-06): made for the Sample (`devices`), Verified Sample (`tested.json`), or reported working on
+  an MPC Sample through the community service (its `sample` count). A Gen2 build alone is not enough. While nothing qualifies, the view says
+  how to add a report. The Gen1/Gen2 Device filter is hidden there; the choice is in the page address (`#plat=sample`) and survives Clear
+  filters; the plugin tabs' counts and the "N of M" line follow the switch. "MPC Sample" is in the Works for me device list.
+- `mpc-store.sh` lists it as `[only for: mpc-sample]` and skips it (not an error) on other devices; the desktop app refuses it there
+  (`CatPlugin.ForDevice`) and marks it. Both tell the Sample by its settings file (`MPC Sample.settings`); `MPC_STORE_DEVICE` overrides.
+- The quality bar asks for a Sample test (`tested-sample`) instead of Gen1 and Gen2 ones.
+- **Dependencies:** an entry may depend on a device-limited one only if it is limited to those devices too. `--check-registry` refuses
+  the registry dependency otherwise, and the builder hides a version whose dependency (registry or zip) is only for devices it is not
+  limited to, with the reason, so no installer can be asked to fetch a Sample-only addin for a Live III. The rack depends on the draw
+  handler (`sample-draw-handler>=0.3.0`), both Sample-only. A plugin with a Sample page (`"sample_page"`) does not depend on the draw
+  handler: the page is optional and the plugin works without it everywhere.
+
+### Dependencies, requirements and addins that may break each other (2026-10-26, offline: unit tests, Go tests, the desktop addin UI test, the site browser test)
+- **Dependencies and conflicts** (declared, CATALOG_SPEC.md "Dependencies"): a version can need other catalog plugins
+  (`percolator>=2.0.0`, `machinemodule-gen2=same`) or conflict with some. The author declares them in the zip (`release.py --depends/--conflicts`),
+  or a maintainer in the registry entry when the zips don't. The builder hides a version, per device generation, whose dependencies the catalog
+  can't satisfy, and gives each dependency a version to install. Both installers add what is missing (or update what is too old) to the batch and
+  say why, and refuse a conflict, a downgrade, a major update brought in for a dependency (`mpc-store.sh --major` allows it), or removing what
+  an installed plugin needs, unless forced. The site's popup has a "Depends on" row
+  linking to the other entry, and a "Conflicts" row. Registry entries carry five today: Incipience Out, Percolator Out, Machinemodule Tap (Gen2),
+  TR-MPC Tap FX and Daemon Listen each need their host plugin (found by reading every catalog summary and README, 2026-10-26).
+- **`requires`**, the author's one line from `release.py --requires`, was in every zip manifest but shown nowhere. It is now on each version
+  record, a "Needs" row on the card, and printed by `mpc-store.sh` (`NEEDS:`) and the desktop app before installing. Some say another plugin must
+  be in the same project; those are now also declared as dependencies (above), and `requires` stays for what isn't a catalog plugin.
+- **Addins that may break each other**, computed, never declared: `catalog_check.py` records the functions each addin's library defines
+  (`hooks`) and whether it looks like it passes a hooked call on (`chains`: it imports `dlsym` or `dlvsym`, and doesn't both import
+  `dlopen` and name `libasound.so`). In `LD_PRELOAD` the first definition wins, so two addins that define the same function work together
+  only if the first hands the call on, which is how the remote addin once hid hwremap's hooks (NOTES.md, 2026-10-12/13).
+  `catalog_build.py` (`hook_overlaps_of`) lists a pair (`shares_hooks`, `overlaps.json`) only when they share a function **and** one of them
+  doesn't chain. Such a pair is shown on both cards, warned about by both installers when the other is installed or chosen, and gets one
+  catalog issue (closing it is the review). The import check is a heuristic: it can't see how each hook is written. A name overlap between
+  two addins that both chain is not shown: usb-audio, skipback and force-link-audio all replace `snd_pcm_writei` and all chain, so on the
+  published releases (2026-10-26) nothing is listed. A first version that warned on every overlap was dropped the same day as noise.
+  Not caught: a conflict with something outside the catalog (a firmware or launcher addon), and an addin that replaces `dlsym` itself, which changes
+  how every other addin finds the next function (commander, fixed 2026-10-13).
+
 ### Site
 Generated static HTML (`tools/catalog_site.py`, no JS framework): searchable/filterable grid, a page per plugin
 (screenshot, description, version history, install steps, source link, checksum, tested-on), a "recently updated"
-feed and an Atom feed. Fast-moving plugins are handled by the version list and the stable/beta channel split.
+feed and an Atom feed. A collection is one card with its own view (Collections above). Fast-moving plugins are handled by the version list and the stable/beta channel split.
 
 ### Installer / updater (later, optional)
 Same JSON, thin clients: (a) a BusyBox shell script on the device (`list`, `install <id>`, `update`, `remove`)
@@ -190,14 +312,19 @@ here first and move to its own repo (recommended, for community ownership) once 
 
 ### Phase 3: The website
 - [x] `tools/catalog_site.py` generates the site from `catalog.json`; `catalog.yml` deploys with Pages on main (2026-09-29; checked in headless Chromium; Pages deploy live at https://sd88me.github.io/mpc-vst-plugins/).
-- [x] List with search, filters (kind, style, developer, license, MPC OS 2.x / 3.x, beta) and sorting (updated, downloads, name, developer, kind), state kept in the URL hash; plugin page with history, install steps, checksum, source link.
+- [x] List with search, filters (kind, style, developer, tags, MPC OS 2.x / 3.x, Gen1/Gen2, tier, beta; the License and Distribution filters were removed 2026-11-05, and old links that carry `lic=` or `dist=` still load and ignore them; pick several tags, or click a tag on a card, and a plugin must carry all of them: `tags=a,b` in the URL hash) and sorting (updated, newest in catalog, downloads, name, developer, kind), state kept in the URL hash; plugin page with history, install steps, checksum, source link.
 - [x] Guide pages Install, Build and Workflow (Add yours was merged into Workflow on 2026-10-09; add.html redirects) (2026-09-29): Markdown in `catalog/pages/*.md`, rendered by `tools/catalog_site.py`
+- [x] Guide pages: FAQ page; images in pages (`![alt](img/x.png)` on its own line, files in `catalog/pages/img/`, copied to the site; only `img/` or https) (2026-11-02). Cards show "Needs your own ROM" and a Your files row from a release's required `user_files` (labels without "(optional)"), and an Install row pointing to the Plugin Manager.
+- [x] Install page guide (2026-11-03, offline + headless Chrome): a `::: guide` line becomes a "Find your steps" box filled by `tools/catalog_site/guide.js` (model, then MPC OS version, then the steps with the right Gen1/Gen2 zip, or the desktop installer link when the app is needed). The full page text stays below it; a test checks that every link the guide gives exists on the page. A `::: folds` line makes every later `##` section a collapsed fold (the Install page starts with only the guide and section titles open).
+- [x] Install page writes drives in the browser (2026-11-03, offline: `node tools/test_drivewrite.mjs` + real zips read; not yet on a real stick): `tools/catalog_site/drivewrite.js`, Chrome/Edge only (File System Access API). The user downloads the zip (GitHub release downloads have no CORS, so the page can't fetch them), chooses it, then the drive. 3.10.1: the Gen1/Gen2 folder zip goes into `VST2 Plugins/<folder>/` (an old copy of that folder is replaced). 3.9.1: our own Plugin Manager stick (the G2 stick, `tools/usb_g2/build_stick.py`; one prompt installs and registers the Plugin Manager and restarts MPC), checked against `tools/desktop/g2stick-pin.json` (the installer's pin) and written only to an empty drive; its required-files list is repeated from `g2stick.go`. Other browsers get the manual steps; Brave (Chromium, but the API is off by default) is told to enable `brave://flags/#file-system-access-api`. One step since 2026-11-03 (offline, Chrome end to end with the real zips): `tools/site_downloads.py` (CI, after the site is generated) copies the files in `catalog/downloads.json` from their releases into the site's `dl/`, checked against their pinned SHA-256 (the 3.9.1 stick reuses the installer's pin file), and writes `dl/downloads.json`; the page then downloads from its own site (no CORS problem) and writes in one click, with "use a zip you downloaded" kept as a fallback. A release that is not out yet is skipped with a warning; a checksum mismatch fails the build. **When a Plugin Manager release changes, update its pins in `catalog/downloads.json`.** The old-address mirror does not copy `dl/` (its pages redirect).
       with a shared menu; checked in headless Chromium at desktop and phone width.
 - [x] (2026-09-29; live, `feed.xml` and `catalog.tsv` both served, checked 2026-10-02) Atom feed `feed.xml`; "Tested on" from optional `tested.json` in the plugin repo; contributor docs in `catalog/README.md`.
 - [x] (2026-10-03) `catalog/patches.json`, the device patches the installer app lists in its read-only step 7, is validated by `tools/patch_check.py` and published by `tools/catalog_site.py` next to `catalog.json` (`docs/PATCHES.md`).
 - [x] (2026-10-09, offline: browser-checked at desktop and phone width, not yet published) The catalog page has tabs: All, Instruments, MIDI, Effects and Addins (2026-10-10; All is every plugin together; since 2026-10-14, offline, All is the first tab and the landing tab, so a link without `tab=` opens on All and an Instruments link carries `#tab=instrument`: MIDI is the optional registry field `role: "midi"`, tagged by hand on 14 sequencers/generators and listed there instead of under Instruments; the other tabs are the old single Plugins tab split by kind; they share the filter bar and grid, a bundle shows under each kind it installs, old `#tab=plugins` links open Instruments), Device patches (the `patches.html` cards) and
       Companion apps (`catalog/apps.json`, `tools/app_check.py`; issue #232, MPC Link first). The tab is in the URL hash (`#tab=apps`). The site is named "Open MPC - Plugin Catalog" and the footer links the Discord.
 - [x] (2026-10-09, tested offline against MPC Link v0.4.0 and a fake GitHub; the first nightly run is unverified) Companion app downloads are read from each app's newest stable GitHub release by `tools/app_resolve.py` (`assets` rules in `catalog/apps.json`), run by `catalog.yml`; pinned `downloads` are the fallback.
+- [x] (2026-11-02, live the same day) Collections: one card per repo's set of entries, the more-than-5 rule,
+      `collections[]` in `catalog.json`, the collection view with Pick all, a grouped feed (see Collections above).
 - [ ] Announce to the community; collect what people actually ask for before building Phase 4.
 
 ### Distribution: build-yourself (2026-09-29)
@@ -222,7 +349,7 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
 - [x] Guides (Install, Build, Workflow; Setup was merged into Build on 2026-10-01) checked against the new layout (2026-09-30): Install's manual steps use `plugin-meta.xml`,
       and it has "If a plugin disappears after a restart". Site cards carry no layout-specific text (`index.template.html`).
 - [x] Old-layout releases are flagged (2026-10-13, offline: `tools/test_catalog.py`): warning in `catalog_check.py`, a builder problem for a newest stable release, and a PR check (`--require-portable`) for new or changed registry entries. Prompted by a third-party port whose release zip still used `/sdcard/vst` and did not show up in plugin managers.
-- [x] Stray registry files are rejected (2026-10-15, offline: `tools/test_catalog.py`): `--check-registry` fails on any `*.json` directly in `catalog/` other than `apps.json`, `patches.json` and `yanked.json`. The build only reads `catalog/plugins/*.json`, so an entry added one folder too high (GitHub's "Create file" in `catalog/`) used to pass CI and never be listed (Fretty, #447).
+- [x] Stray registry files are rejected (2026-10-15, offline: `tools/test_catalog.py`): `--check-registry` fails on any `*.json` directly in `catalog/` other than `added.json`, `apps.json`, `patches.json` and `yanked.json`. The build only reads `catalog/plugins/*.json`, so an entry added one folder too high (GitHub's "Create file" in `catalog/`) used to pass CI and never be listed (Fretty, #447).
 - [x] Published releases still in the old layout dropped off a list-rebuilding scanner (NOTES 2026-09-30); all current plugins were re-released above, so the scanner and the catalog agree.
 
 ### Phase 4: Install and update from the device or desktop
@@ -276,3 +403,26 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
 - **Authors not using `release.py`.** Support them by documenting the manifest; the validator is the contract.
 - **Rate limits / token.** One nightly run with the Actions token is far below limits for hundreds of plugins.
 - **Catalog scope creep.** Every feature that needs a server, a DB or manual curation is out of scope by default.
+
+## Client addresses during the organization move (2026-10-20, offline tests only; new address live 2026-11-01)
+The desktop app and `tools/mpc-store.sh` try `https://open-mpc.github.io/` first and the old
+`https://sd88me.github.io/mpc-vst-plugins/` second (a custom `--catalog` / `--url` / `MPC_STORE_URL` is used as given; the script takes
+several addresses separated by spaces). Since 2026-11-01 the OpenMPC org site (`open-mpc/open-mpc.github.io`) serves `catalog.json` and `catalog.tsv` at its root; a file it does
+not have yet (`patches.json` until the mirror job copies it) comes from the old address, which stays a copy kept alive from
+`sd88me.github.io` (`ORG_MIGRATION.md`, steps 2 and 3).
+Helper files and `patches.json` come from the same folder as the catalog that worked. Releases published before this change only
+know the old address.
+
+## Old clients and catalog changes (`tools/compat/run.sh`)
+Plugin Managers and desktop installers already in users' hands read the live catalog, so a change to its format must not change
+what they show. `tools/compat/run.sh BASELINE.json CANDIDATE.json [BASELINE.tsv CANDIDATE.tsv]` runs each released client's own
+code from its git tag (Plugin Manager G2 0.2.0 and 0.2.5 on a Gen2 and a Gen1 stand-in device, through `tools/compat/old_manager.c`:
+every card and its details page on Discover, Installed and Updates; desktop installers 0.5.5 and 1.1.2: their `parseCatalog` and
+`ForArch` for both builds) on the published catalog and on the candidate, and diffs what they show; it also checks `catalog.tsv`'s
+header and column count. Docker (gcc:12, golang:1.26). Checked offline 2026-11-03: the live catalog against itself is the same for
+every client; new fields at plugin and version level are the same; one plugin without its downloads, and tags turned into a string,
+are both reported. Run it before any catalog format change (the SDK-format work); a deliberate change diffs only where intended.
+
+**This repo's own Pages address** (`open-mpc.github.io/mpc-vst-plugins/`, 2026-11-03): not where users go (the site is
+`open-mpc.github.io/`, the `mirror-org` job). The `catalog.yml` Pages deploy now publishes `tools/catalog_mirror.py`'s copy there: the
+catalog data files, and every page as a redirect to the same page at the root. It used to publish a full duplicate site.

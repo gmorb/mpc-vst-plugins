@@ -15,6 +15,37 @@ Do you want to run it?" prompt code, 3.10 adds `*.scriptpkg` and `/usr/bin/az01-
 salted hash. This matches TheKikGen's prediction below. **A stick built by this tool will not be accepted once a device is
 updated to 3.10+;** it still works on any device still on 3.9.1 (or an earlier Gen1/Force build using the same scheme).
 
+## Easy stick: Eurikon's prebuilt release (2026-10-27, offline-tested only)
+
+The desktop app's no-SSH mode now leads with Eurikon's own stick (`Eurikon/plugin-manager-usb-for-open-mpc`, MIT, pinned to
+`v1.2.3` of the `sd88me/plugin-manager-usb-for-open-mpc` fork (upstream v1.2.2 plus the OpenMPC Plugin Manager VST welcome-screen option), sha256 checked, see `tools/desktop/easystick.go`). Why: it needs no user firmware, and it is the only route that
+covers MPC OS 3.10, where our salted-hash stick (below) no longer works. One zip serves every device: `open.sh` picks the armv7 or
+aarch64 runtime by `uname -m`; on 3.9.1 the stock prompt launches it, on 3.10 the user first imports `Plugin Manager helper.xpa`
+(a controller profile) once. v1.2.0-beta.1 adds the Gen2 runtime; its author has only Gen1 hardware, so Gen2 is a beta until
+tested on a Live III. Not done: SSH and addin reapply on his stick. His `open.sh`, `setup.sh` and `launch.sh` are covered by
+`autorun.check`, so we cannot add a hook without the salt; the ask to him is an optional unchecked `extras/run.sh` that his
+`open.sh` runs when present. In the meantime the desktop app's Advanced option builds a combined stick (2026-10-27, offline-tested only): our wrapper `open.sh`
+(SSH, addin reapply, one MPC restart if the addins' `LD_PRELOAD` differs) plus his bundle unmodified, with his `open.sh` kept as
+`autorun/manager-open.sh` and the check computed over all of it from the user's firmware. Untested on a device: whether his manager's
+"Install to SD" and update still accept the rewritten `USB-SHA256.json`.
+
+## Installer sections and the Level 1 stick (2026-10-29)
+
+The desktop installer's stick page has three sections, each titled with the MPC OS it supports:
+1. **Basic user: one-prompt install stick (MPC OS 3.9.1 and earlier only).** The "Level 1" stick, `tools/usb_g2`: our own `open.sh` and
+   `runtime/run.sh` install the OpenMPC Plugin Manager VST for the device it runs on (armv7 or aarch64 package, folder chosen per device). The
+   installer downloads the pinned bundle (`tools/desktop/g2stick-pin.json`, hash-checked; a local file is optional). Device-verified on a
+   Force and a Live III (OpenMPC Plugin Manager VST 0.2.1). The stock check covers `open.sh`, `run.sh` and `payload.sha256`, which pins the packages, so each plugin manager
+   release needs a rebuilt bundle (`tools/usb_g2/build_stick.py`, from the user's own firmware; only the derived check ships).
+2. **Plugin manager stick (all MPC OS versions, including 3.10).** Eurikon's stick (our fork build, pinned); the 3.10 route is his helper,
+   which must match the stick release (delete any old helper first). The helper is required once on 3.10; after that a fresh insertion offers Open (Eurikon's README), and Shift + Menu covers a stick that was already in at start-up. The stock-3.10 insertion in our test (2026-10-29) was the helper imported earlier: it sits in `/nvme/MPC Documents/Devices/Plugin Manager helper`, shared storage that kept it across the 3.10 overlay and stock 3.10. On the overlay (3.10 over 3.9.1) the stock 3.9.1 prompt appears as usual. Confirmed on a Live III running stock 3.10, 2026-10-29: it opened from
+   the stick (also on insertion, not understood) and with Shift + Menu; on 3.9.1 Shift + Menu only reopens an armed session.
+3. **For developers: turn on SSH (MPC OS 3.9.1 and earlier only).** Our SSH and addin stick, optionally with his manager bundled. It cannot
+   run on 3.10: the helper never runs the stick's `open.sh`. Findings (device, 2026-10-29): a Gen2 root is read-only, so a password cannot
+   be kept and the installer now blocks it (use a key; SSH then lasts until reboot); a Force's busybox has no `chpasswd`, so the password
+   falls back to a hash written into the shadow file (openssl on the Force). The bundled manager opens only the first time; put
+   `open-plugin-manager.txt` on the stick to open it again.
+
 ## How the route works
 
 MPC OS up to 3.9.1 (Gen1 and Force) has a stock "USB script" reader. A stick with `autorun/autorun.json`, `autorun/autorun.check`
@@ -54,29 +85,27 @@ its position differs, and it appears twice. The scheme is gone in MPC OS 3.10.0 
   `install.sh -y -n` (2026-10-23: a no-op where its LD_PRELOAD entry persisted; on a device with no persistent `/etc` at all,
   e.g. Gen2's Live III, the entry lives on `/run` and a reboot wiped it, while `/data/mpc-addins/<id>/` itself -- including its
   own copy of `install.sh` -- survived; mpc-vst-plugins `docs/ADDINS.md`, "A device with no persistent /etc"), then copies
-  `MPC.settings` to the stick, then runs the bundled `mpc-store.sh -y install <ids>` (default `plugin-manager`; ids from
+  `MPC.settings` to the stick, then runs the bundled `mpc-store.sh -y install <ids>` (default `plugin-manager-g2`, since 2026-10-29; ids from
   `install.txt` on the stick) and writes `mpc-install-result.txt`. `mpc-store.sh` stops MPC once, starts it once, and starts it
-  again on failure. It does not touch `LD_PRELOAD` itself, so addins keep working. `mpc-store.sh` already picks the aarch64 vs
+  again on failure; when every requested id was skipped (no build for this device) MPC is never touched at all, and the run is
+  not a failure. It does not touch `LD_PRELOAD` itself, so addins keep working. `mpc-store.sh` already picks the aarch64 vs
   armv7 zip by `uname -m` and the right `MPC.settings` plugin-list key per generation, so the same stick build works unmodified
   on Gen1 and Gen2. The result: reinserting the stick restores SSH, every addin, and installs/updates catalog plugins, all in
   one step, on a device like the Live III where none of it survives a reboot on its own.
 - `tools/test_usb_stick.py`, CI in `.github/workflows/usb-stick.yml`: made-up salt; the real one is never stored.
-- `tools/desktop/stick.go` (2026-10-23): a Go port of `saltscan.py` and `make_stick.py` into the downloadable installer app, so a
-  user who would rather not use Python/the CLI can build a stick from a web page -- a new top-level mode there ("Plugin install
-  (no SSH or connection needed)"), independent of the SSH-based install steps, with an explanation of what it does and what it's
-  compatible with up front. Same algorithm (`tools/desktop/stick_test.go` mirrors `tools/test_usb_stick.py`'s cases), same
-  output. The firmware path and output folder each have a **Browse…** button (`tools/desktop/browse.go`, a server-side picker,
-  since a browser's file input can't hand back a real path) and the output folder also lists mounted drives
-  (`tools/desktop/drives_*.go`) so picking a USB stick there writes the build straight onto it -- `BuildStick`/`make_stick.py`'s
-  `build()` accept an output folder that already exists, as long as it's empty, since a mounted drive's own root directory
-  always "already exists" (it's the mount point); a non-empty folder is still refused (2026-10-23 fix: picking a drive from the
-  list used to always fail with "already exists", since the first version only accepted a brand-new folder). "Empty" ignores a
-  drive's own housekeeping (`System Volume Information`, `$RECYCLE.BIN`, dotfiles like `.Trashes`/`.DS_Store`/`.Spotlight-V100`)
-  since a freshly formatted Windows drive always has `System Volume Information` on it on its own (2026-10-23 fix: a user's real
-  freshly formatted stick was refused as "not empty" for exactly this). The salt scan (slow on a Gen2
-  image, which needs the pure-Go xz decompressor) reports periodic progress so it doesn't look stuck. SSH access is its own
-  collapsed, closed-by-default "Advanced" section: a key (paste one, or the app generates an ed25519 keypair and shows the
-  private half once) or, with heavier warnings, a password -- most people leave this on "None". See `tools/desktop/README.md`.
+- `tools/desktop/stick.go` (2026-10-23, reworked 2026-10-27): a Go port of `saltscan.py` into the downloadable installer app, so a user who
+  would rather not use Python/the CLI can build a stick from a web page. It sits in the app's "Plugin install (no SSH or connection
+  needed)" mode, under the easy stick and a collapsed "Advanced: turn on SSH (for developers)" section: a stick that turns SSH on (a
+  key, pasted or generated with the private half shown once, or with heavier warnings a password; one of the two is required), puts
+  addins back, and by default also opens the community plugin manager (`BuildSSHStick`; the preset catalog list the CLI stick has is
+  not in the app). Same salt algorithm (`tools/desktop/stick_test.go` mirrors `tools/test_usb_stick.py`'s salt cases). The firmware path
+  and output folder each have a **Browse…** button (`tools/desktop/browse.go`, a server-side picker, since a browser's file input
+  can't hand back a real path) and the output folder also lists mounted drives (`tools/desktop/drives_*.go`) so picking a USB stick
+  there writes the build straight onto it. The output folder may already exist if it is empty, since a mounted drive's own root
+  directory always "already exists" (2026-10-23 fix); a non-empty one is refused. "Empty" ignores a drive's own housekeeping (`System
+  Volume Information`, `$RECYCLE.BIN`, dotfiles like `.Trashes`/`.DS_Store`/`.Spotlight-V100`), since a freshly formatted Windows
+  drive always has `System Volume Information` (2026-10-23 fix). The salt scan (slow on a Gen2 image, which needs the pure-Go xz
+  decompressor) reports periodic progress so it doesn't look stuck. See `tools/desktop/README.md`.
 
 ## Rules
 
@@ -84,18 +113,21 @@ its position differs, and it appears twice. The scheme is gone in MPC OS 3.10.0 
   in a release. Do not publish a ready-made stick.
 - Anything on the stick that the check covers (`autorun.json`, `open.sh`, `runtime/*`) is fixed once the check is made;
   `install.txt` sits outside it on purpose, so the plugin list can be edited.
-- The plugin manager is `plugin-manager` from the catalog (a VST app listing the catalog on the MPC screen).
+- The plugin manager is `plugin-manager-g2` (OpenMPC Plugin Manager VST) from the catalog, a VST app listing the catalog on the MPC screen. poloq's original `plugin-manager` was removed from the catalog on 2026-10-29 at poloq's agreement (no longer maintained); the 2026-10-13 and 2026-10-23 runs above used it.
 
 ## Not known yet
 
-- Not run end to end on real Gen1 hardware, or on any real Gen2 hardware (Gen2 autorun itself is community-reported to work —
-  2026-10-20 — and the salt is confirmed offline in the Gen2 3.9.1 image, but this project's stick has not been run on a Gen2
-  device). First run on a new device: back up `MPC.settings`, save the session, ask before the restart.
-- The stick's default install, `plugin-manager` (poloq-instruments/mpc-vst-manager), had no aarch64 build at all until
-  2026-10-23: `mpc-store.sh` would refuse it on Gen2 with no Gen2 build, so the stick's default install did nothing there.
-  A Gen2-compat PR (device probe: `/nvme`, `/data/Settings`, `pluginList-arm-64bit`, plus an aarch64 build) is open at
-  <https://github.com/poloq-instruments/mpc-vst-manager/pull/12>, offline-tested only (fake Gen2 device + aarch64/QEMU);
-  not yet merged, not yet run on real Gen2 hardware.
+- **Run end to end on a real Gen2 device (Live III, 2026-10-23):** the desktop app's "Plugin install" mode built a stick from
+  the device's own firmware, the prompt appeared, SSH setup and every already-installed addin's reapply (commander, remote,
+  skipback) all succeeded. The one thing that did not install was the catalog default, `plugin-manager`, because
+  poloq-instruments/mpc-vst-manager has no Gen2 (aarch64) build published yet (see below) -- `mpc-store.sh` now skips an id
+  with no build for the device instead of aborting the run (2026-10-25 fix, see `docs/GEN2.md`), so this no longer blocks
+  SSH/addin reapply or any other catalog id also listed. Not yet run end to end on real Gen1 hardware.
+- The stick's default install, `plugin-manager` (poloq-instruments/mpc-vst-manager), still has no aarch64 build published: a
+  Gen2-compat PR (device probe: `/nvme`, `/data/Settings`, `pluginList-arm-64bit`, plus an aarch64 build), device-tested on the
+  Live III above, is open at <https://github.com/poloq-instruments/mpc-vst-manager/pull/12>, not yet merged upstream. Until it
+  is, a Gen2 stick's default install is a no-op (now reported as "skipped", not a failure) unless `install.txt` is edited to
+  name something else with a Gen2 build.
 - Needs internet on the device for the catalog. An offline stick (bundled zips) is not built.
 - Other MPC OS 3.x point releases and Key/X/One: the salt scheme and the reader are still unchecked, beyond the 3.10.0 break
   above.

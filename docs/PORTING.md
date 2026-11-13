@@ -28,6 +28,12 @@ just call it (a build that links `wrapper/vst2_wrap.c` itself must add `-lpthrea
 it on the device's glibc 2.31 toolchain). Don't vendor copies of the wrapper or tools -- a port source that implements `mpc_engine()` itself
 can `#include "engine.h"` directly (the builder puts `wrapper/` on the include path). Then bench it (docs/BENCH.md) and package it (docs/RELEASING.md).
 
+`vst.json` `"version"` is the VST2 int, `major*1000 + minor*100 + patch*10 + build` (3.1.2 -> `3120`): gen_vst.py
+writes it as `PLUG_VERSION` and the skin's `version.xml` now takes its four-part `<version>` from it too (2026-10-28,
+offline-tested: the int decomposition and the file contents in `tools/test_shadow_skin.py`) -- before, every skin
+shipped `1.0.0.0` and MPC listed a 3.1.1 plugin as 1.0.0.0. One decimal digit each for minor, patch and build, any
+number for major: a patch above 9 rolls into the minor (that cannot be told from the int), so bump the minor.
+
 **Vendor the engine's own source into the port's repo; don't fetch it at build time.** If the DSP comes from a
 third-party upstream (another project's synth module, an emulator core, anything not written in this repo), `git clone` it
 into the port's repo as committed files (`src/dsp/` or similar), not into a gitignored scratch dir pulled fresh
@@ -92,6 +98,9 @@ for the pattern). This applies to every future port, not just ones that hit the 
 - [ ] State saved via chunks (`effGetChunk`/`effSetChunk`).
 - [ ] Offline x86 test: `tools/test_port.sh <port>/vst.json` prints PASSED (instances, parameter round-trip,
       options, popups, MIDI → audio, chunk restore, under ASan).
+- [ ] Desktop VST3 (optional, local use only, never shipped to a device): `tools/test_vst3.sh <port>/vst.json` prints "all passed";
+      `tools/build_vst3.sh <port>/vst.json --install` puts it in `~/.vst3` (docs/DESKTOP_VST3.md). Run it after `build_port.sh`, so
+      the plugin window has the skin; `--shots <dir>` on the test writes each page to look over.
 - [ ] Gen2 (optional, proven on two ports as of 2026-10-11 — Crate Digger, Profit-08, both loaded on a real MPC Live III): `"targets":
       ["armv7", "aarch64"]` in vst.json, `tools/build_port.sh <port>/vst.json aarch64` builds `build/aarch64/<so>` (`arm64v8/gcc:12-bookworm`),
       `tools/test_port.sh <port>/vst.json aarch64` must print PASSED (UBSan, arm64 container), and the release carries both zips
@@ -105,6 +114,11 @@ for the pattern). This applies to every future port, not just ones that hit the 
       `gen_vst.py` writes `params.lock` next to `vst.json` on the first build: commit it. A build fails when an existing key
       changes index; `GEN_VST_RELOCK=1` accepts the break (before a first release only). Rebuild the skin after any change.
 - [ ] Options: an index; nudges step one option (the wrapper does this). Triggers: `"momentary": true`, which springs back.
+- [ ] MPC delivers one tap on a drawn button as **two presses 30 to 140 ms apart** with no release between (the finger going down and lifting;
+      measured on a Live III, MPC OS 3.9.1, 2026-10-30: `set k_A=1` twice per tap). A momentary param therefore ignores a second press within
+      `"debounce_ms"` of the last one it acted on (default 250; the wrapper does this, so "Program >" steps one program and a drawn keyboard types
+      one letter). Set `"debounce_ms": 0` on a trigger that must fire as fast as it is tapped. Releases (the spring-back to 0, the host's echo of it)
+      are never held back. Plugins built before this change double-fire: rebuild and re-release them with the current wrapper.
 - [ ] A control can't be disabled from the host side: the wrapper has no `effGetParameterProperties`, and JUCE's VST2
       host has no "disabled" flag anyway. Hide it in the skin (`when=`). A control with nothing to do (a pager with one
       page, "next" at the end of a list) must do nothing in the engine: clamp and ignore it there. `setParameter` still
@@ -142,6 +156,14 @@ for the pattern). This applies to every future port, not just ones that hit the 
       (TR-MPC's `sNN_fam`, set by the voice `sNN_src`): put `"refresh_display": true` on the param that is written. A plain host write
       no longer asks MPC for an UpdateDisplay (NOTES.md 2026-10-21). Test Q-Links on track edit → automation, not only
       on the plugin screen: that screen takes a different host path.
+- [ ] A param the engine changes by itself (a network or status readout, a progress value) gets `"live": true` in params.json:
+      `gen_vst.py` lists it as `PLUG_LIVE` in params.h and `host_test`'s "parameter 0 toggle changes nothing" check skips it. Without it that check
+      fails offline (2026-10-27, found porting the Plugin Manager). `host_test` also no longer uses parameter 0 for its option-step tests: the
+      wrapper holds parameter 0 for MPC's STOP toggle, so a one-event move of it does not step.
+- [ ] A param you retired from the screen but kept in the table, so saved projects and automation keep their indices, gets
+      `"legacy": true` in params.json: `gen_vst.py` lists it as `PLUG_LEGACY` in params.h and `host_test` no longer picks it as
+      the first knob, option list or whole number of its checks (2026-10-29, offline: `poc/steptest` with its first param flagged
+      moved the knob check to the next one). Keep the param in the table; do not reorder it away to get a green test.
 - [ ] Option lists and `"display": "int"` params step one option or whole number per Q-Link event and per data wheel
       click (`settle()`). If a short one races by under a Q-Link, `"qlink_ticks": N` on that param (opt-in, off by default)
       counts N events per step: 6 suited a 9-option list on a Key 37. It costs N wheel clicks per step too, and on a Force
@@ -177,6 +199,23 @@ for the pattern). This applies to every future port, not just ones that hit the 
 - [ ] Skin touch-ups the layout can't express (per-role live-text sizes/colours in `TUI.json`): a script named by
       vst.json `"skin_post"`, run on the built skin folder; make it fail when its targets are missing. Design ideas from
       other ports: `docs/COMMUNITY_SKINS.md`.
+- [ ] Optional, MPC Sample: the Sample shows no plugin skin (its UI has no plugin page). A wrapper port gets a 320x240 page
+      from vst.json `"sample_page"` (`tools/gen_vst.py` `sample_lines()`, `wrapper/sample_page.h`): a `"dial"` param
+      stepped by the data dial and the < > keys (a `"programs"` param loads once the dial stops), up to three knobs per
+      `"banks"` entry for K1-K3 with pickup (a knob moves its param only once it reaches the value), and `"lines"` readouts
+      (`"key"`, `"size"` 1-4, `"label"`, `"color"` `"#rrggbb"`; `gen_vst.py` rejects anything else). The page opens at the
+      host's first effMainsChanged, not at creation, so MPC's scan and probe instances open none; its knob, dial and preset
+      changes are applied at the start of the next audio block, never from the page's own threads.
+      Space left over goes to the engine's `mpc_engine_sample_draw()` (`wrapper/engine.h`, a weak symbol; Tuner draws its
+      needle there). The page needs mpc-addin-sample-draw-handler and is inert everywhere else; it is named after the
+      plugin, so the RACK addin's dial press opens it (a long hold of PAD FX opens and closes RACK). A plugin with its own wrapper
+      can use `wrapper/sample_draw.h` directly (header-only: open the page on create, close it in `effClose`; the render
+      function runs on the page's thread only while the page has the screen). Example: NAM's `sample_page_render`.
+      Offline: a stand-in "MPC Sample" host with the addin preloaded and `MPC_SDRAW_TEST_FB` (the addin's tests/) shows the
+      page in a file before it goes near a device. `tools/test_sample_page.sh <port>/vst.json` builds the port with a
+      stand-in draw handler and host under ThreadSanitizer: the page opens once, pickup, the dial (a programs dial loads
+      after 250 ms and stops at the last program), and input, drawing, audio and host writes at once without a data race.
+      Examples: Tuner, Keyscope, Stompbox.
 
 ## 4. Device
 - [ ] The plugin is one folder, `/sdcard/Synths/<vendor> - VST - <name>/`: the `.so`, `Plugin Skins/`, `version.xml` and any data next to the `.so`.
@@ -187,10 +226,13 @@ for the pattern). This applies to every future port, not just ones that hit the 
 Every port is meant to be listed in the plugin catalog (`docs/CATALOG.md`, `catalog/README.md`). Nothing to type per release
 if you do this once:
 - [ ] Repo is public with an SPDX `LICENSE` file (MAME-style or other non-open licences need `source_available`, see `catalog/README.md`). No closed binaries or copyrighted ROMs in the repo or zip.
-- [ ] Release only through `tools/release.py` / the reusable `vst-release.yml` workflow **with** `--repo owner/name --license <SPDX> [--id kebab-id] [--requires "..."]` (workflow inputs `plugin_id`, `license`, `requires`). That writes `mpc-plugin.json`; a zip without it is not listable.
+- [ ] Release only through `tools/release.py` / the reusable `vst-release.yml` workflow **with** `--repo owner/name --license <SPDX> [--id kebab-id] [--requires "..."] [--depends <id>[>=X.Y.Z] ...] [--conflicts <id> ...]` (workflow inputs `plugin_id`, `license`, `requires`, `depends`, `conflicts`; docs/CATALOG_SPEC.md "Dependencies"). That writes `mpc-plugin.json`; a zip without it is not listable.
 - [ ] Gate: `tools/catalog_check.py dist/<zip> --catalog --expect-id <id> --expect-repo owner/name` must print OK.
 - [ ] Optional `tested.json` at the repo root (`[{version, device, firmware, date}]`) after each device test: shown as "Tested on".
 - [ ] One PR adding `catalog/plugins/<id>.json` to mpc-vst-plugins (first release only). Never put versions or checksums in it.
+- [ ] **Several plugins from one repo?** More than 5 entries by the same author in one repo need a collection
+      (`catalog/collections/<id>.json` plus `"collection": "<id>"` in each entry; `catalog/README.md`), so the catalog shows one card for the set.
+      `--check-registry` fails without it (live 2026-11-02).
 - [ ] Keep the `uid` and `.so` name fixed; bump `param_compat` (X of X.Y.Z) only when parameter indices change.
 - [ ] **Firmware-derived port?** If the DSP is compiled from the user's own firmware (so the built `.so` embeds firmware
       code, or the zip carries ROM samples or the OS file), you cannot publish a zip at all. Opt out of the release path:

@@ -7,14 +7,16 @@ summary: Get your computer ready, build a plugin that has no download, or turn a
 
 This page is for **building**: a plugin marked "Build it yourself" in the catalog, or a plugin of your own. If you only want to put a plugin from the catalog on your device, you do not need any of it: see [Install](install.html).
 
-You do not need to be a programmer. The commands are examples: for anything you install, the linked official pages have the current steps. Building never happens on the device; the device only receives the finished plugin.
+**Akai's SDK or Open MPC?** Both, for different jobs. A new plugin is built with Akai's [MPC Plugin SDK](https://github.com/inmusic-software/mpc-plugin-builder-sdk) (code framework, build tools, screen kit). Open MPC takes it from there: the release workflow packages it for every MPC (including MPC OS 3.9.1), the catalog checks and lists it, and the Plugin Manager and installer put it on devices and keep it updated. Many existing catalog plugins use this repo's own wrapper instead; both routes end in the same catalog.
+
+You do not need to be a programmer. Building happens on your computer, never on the device, which only receives the finished plugin. For anything you install, the linked official pages have the current steps.
 
 ## What you need to build
 - **A Linux-style shell:** Terminal on macOS, Ubuntu on Linux, or Ubuntu inside WSL on Windows.
 - **Git** and **Python 3.**
 - **Docker.** The builds run inside it, so nothing else has to be installed by hand.
 - Several GB of free disk space (Docker downloads build images the first time) and a few minutes.
-- To put the result on a device: the [installer app](install.html) and root SSH access to your device.
+- To put the result on a device: the [installer app](install.html#the-desktop-installer-app) and root SSH access to your device.
 
 ## Get your computer ready
 A check follows each step.
@@ -39,39 +41,12 @@ Check: `docker run --rm hello-world` prints a short welcome message. If it does,
 ### 4. Keep your files in the right place
 On Windows with WSL, work inside your Ubuntu home folder (`cd ~`), not under `/mnt/c/`. Builds are much faster there and file permissions behave.
 
-## Plugins you build yourself
-A plugin with the **Build it yourself** badge in the catalog has no download: its build embeds your own firmware, so nobody can publish the result. You build it once, on **your computer**, then install the result on your device. The device itself does not build anything.
-
-**The process at a glance:**
-
-| | Step | Where |
-|---|---|---|
-| 1 | Get your own firmware or OS file | your computer |
-| 2 | Set up git, Python and Docker (once) | your computer |
-| 3 | Clone the plugin's source | your computer |
-| 4 | Run its build command | your computer (5 to 30 minutes) |
-| 5 | Install the zip it made | your device, over your network |
-
-In detail:
-
-1. **Get your own files.** The plugin's card lists them under "You need" (for example an Elektron OS `.syx` file). Download them from the manufacturer, or export them from your own hardware, and keep them in a folder whose path has no spaces. Use the exact version the card names: the build checks it.
-2. **Set up your computer.** You need Docker, git and Python 3, and a Linux-style shell: macOS, Ubuntu, or Ubuntu in WSL on Windows. "Get your computer ready" above walks through it, with a check after each step. This is a one-time job; every later build reuses it.
-3. **Get the plugin's source on your computer.** This is the `git clone` step in the plugin's README: run `git clone --recursive https://github.com/<owner>/<plugin-repo>.git`, then `cd <plugin-repo>`. The card's Source link shows the repo. `--recursive` matters: it fetches the parts the build needs.
-4. **Run the build command** from the plugin's card, with the path to your own file in quotes. It builds inside Docker and takes a few minutes (some take longer; the first run also downloads what it needs). Leave the computer awake and watch the output. It stops at the first error and names the step, and it refuses to finish if its self-check fails, rather than giving you a build that is not verified. After fixing a problem, run the same command again: finished work is reused.
-5. **Install it.** The build leaves a zip in the plugin's `dist/` folder. Start the [installer app](install.html), connect, and drop that zip into the box in step 2 of the page, then press Install. (If the build command has a `-d <device-ip>` option, adding it installs straight onto the device instead.) Save your project first: MPC restarts.
-6. **Keep the result to yourself.** It contains data derived from your firmware. Install it on your own devices only and never share or upload it.
-
-To update later, pull the latest source (`git pull --recurse-submodules`) and run the build command again.
-
-The exact command, and any extra tools it needs, are on the plugin's card and in its README. Step-by-step versions for the two Elektron ports: [Monomodule](https://github.com/sd88me/mpc-vst-monomodule#install) and [Machinemodule](https://github.com/sd88me/mpc-vst-machinedrum#building).
-
 ## Build your own plugin from an engine
-An MPC OS plugin is a small Linux library (`.so`) for the device's ARM processor, plus a **skin**: a folder that describes the plugin's page on the MPC screen. This repo's tools build both from one small description file, and they test the result on your PC before it goes anywhere near a device.
+An MPC OS plugin is a small Linux library (`.so`) for the device's ARM processor, plus a **skin**: a folder describing the plugin's page on the MPC screen. This repo's tools build both from one description file and test the result on your PC first. You need no device until the last step.
 
 What you need on top of the tools above:
-- A checkout of [mpc-vst-plugins](https://github.com/sd88me/mpc-vst-plugins). A plugin lives in its own repo next to it, and points at it with the `MPC_VST` variable.
+- A checkout of [mpc-vst-plugins](https://github.com/open-mpc/mpc-vst-plugins). A plugin lives in its own repo next to it, and points at it with the `MPC_VST` variable.
 - An engine to wrap: a synth or effect core in C or C++, or an engine from Schwung (it plugs in through an adapter).
-- A device to try it on. Nothing here needs one until the very last step.
 
 ### 1. Pick your kind of plugin
 - **A block-rendering engine** (a synth or effect core): the common case. You provide `mpc_engine()` and the tools do the rest.
@@ -79,7 +54,7 @@ What you need on top of the tools above:
 - **A MIDI generator** (sequencer, arpeggiator): MPC ignores a plugin's MIDI output, so it opens its own MIDI port.
 - **An app** (network, files, helper programs): allowed. Keep the audio thread from ever waiting.
 
-The [porting checklist](https://github.com/sd88me/mpc-vst-plugins/blob/main/docs/PORTING.md) covers each case in detail.
+The [porting checklist](https://github.com/open-mpc/mpc-vst-plugins/blob/main/docs/PORTING.md) covers each case in detail.
 
 ### 2. Describe the plugin
 Put a `vst.json` next to the engine:
@@ -115,7 +90,7 @@ The page is a description that MPC draws: knobs, faders, switches, buttons, opti
 "$MPC_VST/tools/studio.py" preview "build/skin/<vendor> - VST - <Name>/Plugin Skins" -o page_%d.png
 ```
 
-Live text can use two fonts, Titillium Web and Roboto. Anything else has to be baked into the artwork. The [Skin Studio guide](https://github.com/sd88me/mpc-vst-plugins/blob/main/docs/SKIN_STUDIO.md) has the details.
+Live text can use two fonts, Titillium Web and Roboto. Anything else has to be baked into the artwork. The [Skin Studio guide](https://github.com/open-mpc/mpc-vst-plugins/blob/main/docs/SKIN_STUDIO.md) has the details.
 
 ### 5. Test on your PC
 ```
@@ -125,18 +100,44 @@ Live text can use two fonts, Titillium Web and Roboto. Anything else has to be b
 This builds the wrapper and your engine for your PC under a memory checker, and plays it: two instances, every parameter, options, notes into audio, and saving and restoring state. It must print `PASSED`.
 
 ### 6. Try it on a device
-Only now does a device come in. Follow the [release workflow](workflow.html): measure CPU, install with the real installer, and test. The reference ports, Maze Voice, JV-880 and Crate Digger, are good to copy from.
+Only now do you need a device. Follow the [release workflow](workflow.html): measure CPU, install with the real installer, and test. The reference ports, Maze Voice, JV-880 and Crate Digger, are good to copy from.
+
+## Plugins you build yourself
+A plugin with the **Build it yourself** badge in the catalog has no download: its build embeds your own firmware, so nobody can publish the result. You build it once on **your computer**, then install the result on your device.
+
+**The process at a glance:**
+
+| | Step | Where |
+|---|---|---|
+| 1 | Get your own firmware or OS file | your computer |
+| 2 | Set up git, Python and Docker (once) | your computer |
+| 3 | Clone the plugin's source | your computer |
+| 4 | Run its build command | your computer (5 to 30 minutes) |
+| 5 | Install the zip it made | your device, over your network |
+
+In detail:
+
+1. **Get your own files.** The plugin's card lists them under "You need" (for example an Elektron OS `.syx` file). Download them from the manufacturer or export them from your own hardware, and keep them in a folder with no spaces in its path. Use the exact version the card names: the build checks it.
+2. **Set up your computer.** Follow "Get your computer ready" above. It is a one-time job; every later build reuses it.
+3. **Get the plugin's source on your computer.** This is the `git clone` step in the plugin's README: run `git clone --recursive https://github.com/<owner>/<plugin-repo>.git`, then `cd <plugin-repo>`. The card's Source link shows the repo. `--recursive` matters: it fetches the parts the build needs.
+4. **Run the build command** from the plugin's card, with the path to your own file in quotes. It builds inside Docker, usually in 5 to 30 minutes (the first run also downloads what it needs). Leave the computer awake and watch the output. It stops at the first error and names the step, and it refuses to finish if its self-check fails, rather than giving you a build that is not verified. After fixing a problem, run the same command again: finished work is reused.
+5. **Install it.** The build leaves a zip in the plugin's `dist/` folder. Start the [installer app](install.html), connect, and drop that zip into the box in step 2 of the page, then press Install. (If the build command has a `-d <device-ip>` option, adding it installs straight onto the device instead.) Save your project first: MPC restarts.
+6. **Keep the result to yourself.** It contains data derived from your firmware. Install it on your own devices only and never share or upload it.
+
+To update later, pull the latest source (`git pull --recurse-submodules`) and run the build command again.
+
+The exact command, and any extra tools it needs, are on the plugin's card and in its README. Step-by-step versions for the two Elektron ports: [Monomodule](https://github.com/sd88me/mpc-vst-monomodule#install) and [Machinemodule](https://github.com/sd88me/mpc-vst-machinedrum#building).
 
 ## When something fails
 | You see | Usually means |
 |---|---|
 | `docker: permission denied` | Your user is not in the `docker` group yet. Run the `usermod` command above, then log out and back in. |
 | `Cannot connect to the Docker daemon` | Docker is not running. Start Docker Desktop, or on Linux `sudo systemctl start docker`. |
-| `ssh: connect to host ... timed out`, or `Permission denied` from `ssh` | See "Check that you can reach your device" on the [Install](install.html) page. |
+| `ssh: connect to host ... timed out`, or `Permission denied` from `ssh` | Check the IP address and that root SSH is on; see "Something else went wrong" on the [Install](install.html#troubleshooting-mpc-os-3-9-1-or-earlier) page. |
 | A build stops with an error about its self-check | Your OS file or your tools differ from what the plugin was built against, and the build refuses to make an unverified plugin. Check the file name and version on the plugin's card. |
 
 ## Where to read more
-- [Porting checklist](https://github.com/sd88me/mpc-vst-plugins/blob/main/docs/PORTING.md)
-- [What has been verified on real hardware](https://github.com/sd88me/mpc-vst-plugins/blob/main/docs/NOTES.md)
-- [Skin Studio](https://github.com/sd88me/mpc-vst-plugins/blob/main/docs/SKIN_STUDIO.md)
-- [CPU check](https://github.com/sd88me/mpc-vst-plugins/blob/main/docs/BENCH.md)
+- [Porting checklist](https://github.com/open-mpc/mpc-vst-plugins/blob/main/docs/PORTING.md)
+- [What has been verified on real hardware](https://github.com/open-mpc/mpc-vst-plugins/blob/main/docs/NOTES.md)
+- [Skin Studio](https://github.com/open-mpc/mpc-vst-plugins/blob/main/docs/SKIN_STUDIO.md)
+- [CPU check](https://github.com/open-mpc/mpc-vst-plugins/blob/main/docs/BENCH.md)

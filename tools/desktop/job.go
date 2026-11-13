@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -60,6 +61,7 @@ func (j *Job) snapshot(since int) (state string, lines []string, next int, resul
 type Item struct {
 	Catalog *CatPlugin // to download first, or nil for a package the user dropped in
 	Pkg     *Package   // set for dropped zips; filled in after the download for catalog ones
+	Why     string     // set when the dependency check added it (resolveDeps)
 }
 
 func randHex(n int) string {
@@ -97,11 +99,14 @@ func RunInstall(dev *Device, root Root, items []Item, workDir string, j *Job, re
 	var pkgs []*Package
 	for _, it := range items {
 		if it.Catalog != nil {
-			c, err := it.Catalog.ForArch(dev.Info.Arch)
+			c, err := it.Catalog.ForDevice(dev.Info.Arch, dev.Info.Device())
 			if err != nil {
 				return err
 			}
 			dest := filepath.Join(workDir, c.ID+"-"+c.Version+".zip")
+			if it.Why != "" {
+				j.log("%s %s: %s", c.Name, c.Version, it.Why)
+			}
 			j.log("Downloading %s %s (%d KB)", c.Name, c.Version, c.Size/1024)
 			next := int64(0)
 			if err := Download(c, dest, func(done, total int64) {
@@ -159,10 +164,10 @@ func RunInstall(dev *Device, root Root, items []Item, workDir string, j *Job, re
 			plugins = true
 		}
 	}
-	if plugins {
+	if plugins && dev.Info.VST2 != "on" {
 		j.log("Installing to %s (%s)", root.Label, root.Path)
 		if !root.InContent && root.Path != "" {
-			j.log("Note: MPC does not list %s as a content location, so a plugin's screen may not show until you add it in MPC's settings", root.Path)
+			j.log("WARNING: MPC does not list %s as a content location, so the plugin will load with no skin until the folder is added to MPC's content locations (or you install to a listed folder)", root.Path)
 		}
 	}
 	if dev.Info.TmpFreeKB > 0 && need/1024*13/10 > dev.Info.TmpFreeKB {
@@ -211,7 +216,17 @@ func RunInstall(dev *Device, root Root, items []Item, workDir string, j *Job, re
 		syncRoots = dev.syncRoots()
 		j.log("After installing, every plugin folder on the device is registered with MPC (the app's own script; MPC.settings is backed up first)")
 	}
-	script := installScriptWith(root.Path, dev.cfg.AddinsDir, tmp, pkgs, dev.Info.Settings, syncRoots)
+	dest, vst2 := root.Path, dev.Info.VST2 == "on"
+	if vst2 { // MPC OS 3.10.1+ lists only <drive>/VST2 Plugins/<folder>/ with a plugin.json: install there, then write it (vst2_migrate.sh --json)
+		dest = path.Join(path.Dir(root.Path), "VST2 Plugins")
+		code, rerr := dev.Run("mkdir -p "+shQuote(dest)+" "+shQuote(tmp)+" && cat > "+shQuote(tmp+"/vst2.sh"), strings.NewReader(vst2MigrateSh), nil)
+		if rerr != nil || code != 0 {
+			cleanup()
+			return fmt.Errorf("cannot prepare %s on the device (status %d): %v", dest, code, rerr)
+		}
+		j.log("MPC OS 3.10.1 with VST2 Support: installing into %s (MPC lists only that folder)", dest)
+	}
+	script := installScriptVST2(dest, dev.cfg.AddinsDir, tmp, pkgs, dev.Info.Settings, syncRoots, vst2)
 	j.log("Installing (MPC is stopped once and started again at the end)")
 	code, rerr := dev.Run(script, nil, func(l string) { j.log("  %s", l) })
 	if rerr != nil {
@@ -235,10 +250,16 @@ func installScript(synths, addins, tmp string, pkgs []*Package) string {
 // while MPC is stopped for the batch, so MPC restarts once.
 // syncRoots, when not empty, runs sync.sh from $T/sync with those -t options while MPC is stopped (InstallOpts.Register).
 func installScriptWith(synths, addins, tmp string, pkgs []*Package, settings, syncRoots string) string {
+	return installScriptVST2(synths, addins, tmp, pkgs, settings, syncRoots, false)
+}
+
+// installScriptVST2 is installScriptWith; with vst2, synths is a "VST2 Plugins" folder and each plugin folder installed there gets
+// its plugin.json from $T/vst2.sh (the embedded vst2_migrate.sh, copied there first) before MPC starts again.
+func installScriptVST2(synths, addins, tmp string, pkgs []*Package, settings, syncRoots string, vst2 bool) string {
 	var b strings.Builder
 	w := func(f string, a ...any) { fmt.Fprintf(&b, f+"\n", a...) }
 	w("T=%s; SYN=%s; STATE=\"$SYN/.mpc-store\"; rc=0", shQuote(tmp), shQuote(synths))
-	w("SVC=acvs; systemctl cat acvs >/dev/null 2>&1 || ! systemctl cat inmusic-mpc >/dev/null 2>&1 || SVC=inmusic-mpc") // acvs on stock firmware, inmusic-mpc on Hakai
+	w("SVC=acvs; if systemctl cat ac50 >/dev/null 2>&1; then SVC=ac50; elif ! systemctl cat acvs >/dev/null 2>&1 && systemctl cat inmusic-mpc >/dev/null 2>&1; then SVC=inmusic-mpc; fi")
 	// A zip built before its installer picked the service itself runs `systemctl stop acvs` and fails where there is no acvs. Put a
 	// systemctl in front of it that says the real unit where the installer says acvs (the plain name only, other arguments pass through).
 	w(`if [ "$SVC" != acvs ]; then mkdir -p "$T/bin"; REAL=$(command -v systemctl); printf '%%s\n' '#!/bin/sh' 'n=$#; while [ $n -gt 0 ]; do a=$1; shift; [ "$a" = acvs ] && a="'"$SVC"'"; set -- "$@" "$a"; n=$((n-1)); done' 'exec '"$REAL"' "$@"' > "$T/bin/systemctl"; chmod 755 "$T/bin/systemctl"; PATH="$T/bin:$PATH"; export PATH; fi`)
@@ -249,6 +270,13 @@ func installScriptWith(synths, addins, tmp string, pkgs []*Package, settings, sy
 		return `"$SYN"`
 	}
 	record := func(p *Package) {
+		if vst2 && !p.Addin {
+			for _, m := range p.Plugins {
+				if m.Skin != "" {
+					w(`  [ -d "$SYN"/%s ] && sh "$T/vst2.sh" --json "$SYN"/%s`, shQuote(m.Skin), shQuote(m.Skin))
+				}
+			}
+		}
 		if p.Addin {
 			w("  :") // its folder records the version; a then-branch may not be empty
 			return
@@ -288,8 +316,8 @@ func installScriptWith(synths, addins, tmp string, pkgs []*Package, settings, sy
 	if anyDefer || syncRoots != "" { // MPC is stopped once for the batch and for registering
 		w("if [ $rc = 0 ]; then")
 		w("  systemctl stop $SVC")
-		w("  i=0; while pidof MPC >/dev/null && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done")
-		w(`  if pidof MPC >/dev/null; then echo "MPC did not stop: nothing was installed"; rc=3; fi`)
+		w("  i=0; while { pidof MPC || pidof 'MPC Sample'; } >/dev/null 2>&1 && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done")
+		w(`  if { pidof MPC || pidof 'MPC Sample'; } >/dev/null 2>&1; then echo "MPC did not stop: nothing was installed"; rc=3; fi`)
 		w("fi")
 		for i, p := range pkgs {
 			if !p.Defer {
@@ -304,6 +332,14 @@ func installScriptWith(synths, addins, tmp string, pkgs []*Package, settings, sy
 		}
 		register()
 		w("systemctl start $SVC")
+	}
+	if vst2 { // an installer that restarts MPC by itself started it before plugin.json was written: once more, so MPC lists it
+		for _, p := range pkgs {
+			if !p.Defer && !p.Addin {
+				w(`if [ $rc = 0 ]; then echo 'Restarting MPC once more so it lists the new plugin'; systemctl restart $SVC; fi`)
+				break
+			}
+		}
 	}
 	w(`rm -rf "$T"`)
 	w("exit $rc")

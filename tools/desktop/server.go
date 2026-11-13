@@ -2,11 +2,12 @@ package main
 
 import (
 	"crypto/subtle"
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,6 +19,11 @@ import (
 //go:embed web/index.html
 var indexHTML []byte
 
+// Screenshots for the stick steps (public, static, no device data): served without the token, still behind the host/origin checks.
+//
+//go:embed web/img
+var imgFS embed.FS
+
 // App is the local web server. It listens on 127.0.0.1 only and every request must carry the random token the app printed, so
 // nothing else on the network, and no web page open in the browser, can drive it. Nothing about the device is written to disk.
 type App struct {
@@ -26,7 +32,8 @@ type App struct {
 	hosts       map[string]bool // accepted Host headers
 	catalogURL  string
 	patchesURL  string
-	releasesURL string // where the version check looks; empty = no check
+	fallbacks   []string // catalog addresses tried, in order, when catalogURL does not give a catalog (empty for a custom --catalog)
+	releasesURL string   // where the version check looks; empty = no check
 	verAt       time.Time
 	verInfo     versionInfo
 	work        string
@@ -52,9 +59,47 @@ func NewApp(cfg Config, token, hostport, catalogURL, work string) *App {
 		stickScan: map[string]*stickScan{}, hosts: map[string]bool{"127.0.0.1:" + port: true, "localhost:" + port: true}}
 }
 
+// fetchCatalog reads the catalog from catalogURL, then from each fallback, and returns the first one that parses. The error
+// names every address that failed, so a broken new address is not hidden behind the old one's answer.
+func (a *App) fetchCatalog() ([]CatPlugin, error) {
+	var msgs []string
+	for _, u := range append([]string{a.catalogURL}, a.fallbacks...) {
+		cat, err := FetchCatalog(u)
+		if err == nil {
+			return cat, nil
+		}
+		msgs = append(msgs, u+": "+err.Error())
+	}
+	if len(msgs) == 1 {
+		return nil, errors.New(strings.TrimPrefix(msgs[0], a.catalogURL+": "))
+	}
+	return nil, errors.New(strings.Join(msgs, "; "))
+}
+
+// fetchPatches is the same for patches.json, which sits next to each catalog. A missing manifest at one address (404) is not
+// "no patches published" while another address still has to be asked.
+func (a *App) fetchPatches() ([]Patch, error) {
+	urls := []string{a.patchesURL}
+	for _, f := range a.fallbacks {
+		urls = append(urls, patchesURLFor(f))
+	}
+	var firstErr error
+	for _, u := range urls {
+		ps, err := FetchPatches(u)
+		if err == nil {
+			return ps, nil
+		}
+		if firstErr == nil || errors.Is(firstErr, errNoPatches) {
+			firstErr = err
+		}
+	}
+	return nil, firstErr
+}
+
 func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", a.index)
+	mux.Handle("/img/", http.FileServerFS(mustSub(imgFS, "web")))
 	mux.HandleFunc("/api/state", a.state)
 	mux.HandleFunc("/api/version", a.versionAPI)
 	mux.HandleFunc("/api/connect", a.connect)
@@ -67,6 +112,9 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/install", a.install)
 	mux.HandleFunc("/api/device", a.devicePlugins)
 	mux.HandleFunc("/api/remove", a.remove)
+	mux.HandleFunc("/api/userfiles", a.userFilesList)
+	mux.HandleFunc("/api/userfiles/upload", a.userFilesUpload)
+	mux.HandleFunc("/api/userfiles/delete", a.userFilesDelete)
 	mux.HandleFunc("/api/unregistered", a.unregistered)
 	mux.HandleFunc("/api/register", a.register)
 	mux.HandleFunc("/api/backups", a.backups)
@@ -78,6 +126,12 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/stick/job", a.stickJobStatus)
 	mux.HandleFunc("/api/stick/keygen", a.stickKeygen)
 	mux.HandleFunc("/api/stick/build", a.stickBuild)
+	mux.HandleFunc("/api/stick/easy", a.stickEasy)
+	mux.HandleFunc("/api/stick/easyinfo", a.stickEasyInfo)
+	mux.HandleFunc("/api/stick/g2", a.stickG2)
+	mux.HandleFunc("/api/vst2migrate", a.vst2Migrate)                // MPC OS 3.10.1+: copy installed plugins into VST2 Plugins (over ssh)
+	mux.HandleFunc("/api/vst2stick", a.vst2Stick)                    // MPC OS 3.10.1+: plugins onto a drive's VST2 Plugins folder
+	mux.HandleFunc("/api/vst2stick/userfiles", a.vst2StickUserFiles) // ... and the user's ROMs into them
 	mux.HandleFunc("/api/browse", a.browse)
 	mux.HandleFunc("/api/drives", a.drives)
 	return a.guard(mux)
@@ -89,13 +143,17 @@ func (a *App) guard(next http.Handler) http.Handler {
 		h.Set("Cache-Control", "no-store")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
-		h.Set("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'")
+		h.Set("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'")
 		if !a.hosts[r.Host] { // a page reaching us through a rebound DNS name has another Host
 			http.Error(w, "unexpected host", http.StatusForbidden)
 			return
 		}
 		if o := r.Header.Get("Origin"); o != "" && !a.hosts[strings.TrimPrefix(o, "http://")] {
 			http.Error(w, "unexpected origin", http.StatusForbidden)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/img/") && r.Method == http.MethodGet {
+			next.ServeHTTP(w, r)
 			return
 		}
 		got := r.Header.Get("X-MPC-Token")
@@ -195,7 +253,7 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	if a.cat == nil || time.Since(a.catAt) > 10*time.Minute {
 		a.mu.Unlock()
-		cat, err := FetchCatalog(a.catalogURL)
+		cat, err := a.fetchCatalog()
 		if err != nil {
 			fail(w, 502, "cannot read the catalog: "+err.Error()+" (you can still install zips you have already downloaded)")
 			return
@@ -328,6 +386,7 @@ type selection struct {
 	Root     string   `json:"root"`     // the Synths folder to install into ("" = the internal drive)
 	Register bool     `json:"register"` // InstallOpts.Register
 	Confirm  bool     `json:"confirm"`
+	Force    bool     `json:"force"` // install even what the dependency check refuses (Resolution.Refused)
 }
 
 // mkroot creates a Synths folder on a drive under /media that has none (Device.MakeRoot), so plugins can be installed there.
@@ -359,9 +418,38 @@ func (a *App) mkroot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"device": a.dev.Info, "problems": a.dev.Info.problems()})
 }
 
-// resolve turns a selection into install items. Caller holds a.mu.
-func (a *App) resolve(s selection) ([]Item, error) {
+// installedVersions says which catalog plugins the device has: id -> version, "?" when the folder is there but no version was
+// recorded. Caller holds a.mu.
+func (a *App) installedVersions() map[string]string {
+	out := map[string]string{}
+	if a.dev == nil {
+		return out
+	}
+	for _, dp := range a.dev.Info.Plugins {
+		for _, c := range a.cat {
+			if c.Kind != "addin" && c.Skin == dp.Folder {
+				if v := a.dev.Info.Stores[dp.Root][c.ID]; v != "" {
+					out[c.ID] = v
+				} else if out[c.ID] == "" {
+					out[c.ID] = "?"
+				}
+			}
+		}
+	}
+	for _, da := range a.dev.Info.Addins {
+		if da.Version != "" {
+			out[da.ID] = da.Version
+		} else {
+			out[da.ID] = "?"
+		}
+	}
+	return out
+}
+
+// resolve turns a selection into install items, adding the catalog plugins they need (resolveDeps). Caller holds a.mu.
+func (a *App) resolve(s selection) ([]Item, Resolution, error) {
 	var items []Item
+	var want []CatPlugin
 	seen := map[string]bool{}
 	for _, id := range s.Catalog {
 		if seen["c"+id] {
@@ -376,9 +464,10 @@ func (a *App) resolve(s selection) ([]Item, error) {
 			}
 		}
 		if found == nil {
-			return nil, fmt.Errorf("%q is not in the catalog", id)
+			return nil, Resolution{}, fmt.Errorf("%q is not in the catalog", id)
 		}
 		items = append(items, Item{Catalog: found})
+		want = append(want, *found)
 	}
 	for _, h := range s.Uploads {
 		if seen["u"+h] {
@@ -387,14 +476,23 @@ func (a *App) resolve(s selection) ([]Item, error) {
 		seen["u"+h] = true
 		p, ok := a.uploads[h]
 		if !ok {
-			return nil, errors.New("a zip you added is no longer there: add it again")
+			return nil, Resolution{}, errors.New("a zip you added is no longer there: add it again")
 		}
 		items = append(items, Item{Pkg: p})
 	}
 	if len(items) == 0 {
-		return nil, errors.New("nothing selected")
+		return nil, Resolution{}, errors.New("nothing selected")
 	}
-	return items, nil
+	arch := ""
+	if a.dev != nil {
+		arch = a.dev.Info.Arch
+	}
+	res := resolveDeps(a.cat, a.installedVersions(), want, arch)
+	for _, c := range res.Items[len(want):] {
+		c := c
+		items = append(items, Item{Catalog: &c, Why: res.Added[c.ID]})
+	}
+	return items, res, nil
 }
 
 func (a *App) plan(w http.ResponseWriter, r *http.Request) {
@@ -408,7 +506,7 @@ func (a *App) plan(w http.ResponseWriter, r *http.Request) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	items, err := a.resolve(s)
+	items, res, err := a.resolve(s)
 	if err != nil {
 		fail(w, 400, err.Error())
 		return
@@ -418,13 +516,14 @@ func (a *App) plan(w http.ResponseWriter, r *http.Request) {
 		Version string `json:"version"`
 		Source  string `json:"source"`
 		MB      int64  `json:"mb"`
+		Why     string `json:"why,omitempty"` // set when the dependency check added it
 	}
 	var lines []line
 	restarts := 0
 	anyDefer, fromCatalog := false, false
 	for _, it := range items {
 		if it.Catalog != nil {
-			lines = append(lines, line{it.Catalog.Name, it.Catalog.Version, "catalog", it.Catalog.Size >> 20})
+			lines = append(lines, line{it.Catalog.Name, it.Catalog.Version, "catalog", it.Catalog.Size >> 20, it.Why})
 			switch {
 			case it.Catalog.Defer == nil:
 				anyDefer, fromCatalog = true, true // an older catalog does not say: only known once the zip is downloaded
@@ -434,7 +533,7 @@ func (a *App) plan(w http.ResponseWriter, r *http.Request) {
 				restarts++ // its installer restarts MPC by itself
 			}
 		} else {
-			lines = append(lines, line{it.Pkg.Title, it.Pkg.Version, "your zip", it.Pkg.Size >> 20})
+			lines = append(lines, line{it.Pkg.Title, it.Pkg.Version, "your zip", it.Pkg.Size >> 20, ""})
 			if it.Pkg.Defer {
 				anyDefer = true
 			} else {
@@ -445,7 +544,8 @@ func (a *App) plan(w http.ResponseWriter, r *http.Request) {
 	if anyDefer {
 		restarts++
 	}
-	writeJSON(w, 200, map[string]any{"items": lines, "restarts": restarts, "maybeMore": fromCatalog})
+	writeJSON(w, 200, map[string]any{"items": lines, "restarts": restarts, "maybeMore": fromCatalog,
+		"refused": nonNil(res.Refused), "notes": nonNil(res.Notes)})
 }
 
 func (a *App) install(w http.ResponseWriter, r *http.Request) {
@@ -473,9 +573,13 @@ func (a *App) install(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	items, err := a.resolve(s)
+	items, res, err := a.resolve(s)
 	if err != nil {
 		fail(w, 400, err.Error())
+		return
+	}
+	if len(res.Refused) > 0 && !s.Force {
+		fail(w, 409, strings.Join(res.Refused, "; ")+". Nothing was changed (install anyway to do it regardless)")
 		return
 	}
 	root := a.dev.Info.primaryRoot()
@@ -517,13 +621,14 @@ func (a *App) jobStatus(w http.ResponseWriter, r *http.Request) {
 // plugins from the catalog and for zips dropped into this session, so those are the ones it will remove.
 type knownPlugin struct {
 	DevPlugin
-	ID        string   `json:"id"`
-	Version   string   `json:"version,omitempty"`
-	RootLabel string   `json:"rootLabel"`
-	Known     bool     `json:"known"`
-	Keep      []string `json:"keep"`
-	Source    string   `json:"source,omitempty"`
-	Addin     bool     `json:"addin"`
+	ID        string          `json:"id"`
+	Version   string          `json:"version,omitempty"`
+	RootLabel string          `json:"rootLabel"`
+	Known     bool            `json:"known"`
+	Keep      []string        `json:"keep"`
+	UserFiles []UserFileGroup `json:"userFiles"` // the user's own files this plugin needs (ROMs), from its manifest
+	Source    string          `json:"source,omitempty"`
+	Addin     bool            `json:"addin"`
 }
 
 // classify matches the device's plugin folders to the catalog and to the dropped zips. Caller holds a.mu and a.dev != nil.
@@ -537,6 +642,7 @@ func (a *App) classify() []knownPlugin {
 				if c.UserData != nil {
 					kp.Keep = c.UserData
 				}
+				kp.UserFiles = c.UserFiles
 			}
 		}
 		if !kp.Known {
@@ -547,6 +653,7 @@ func (a *App) classify() []knownPlugin {
 						if m.UserData != nil {
 							kp.Keep = m.UserData
 						}
+						kp.UserFiles = m.UserFiles
 					}
 				}
 			}
@@ -572,7 +679,7 @@ func (a *App) ensureCat() {
 	if ok {
 		return
 	}
-	if cat, err := FetchCatalog(a.catalogURL); err == nil {
+	if cat, err := a.fetchCatalog(); err == nil {
 		a.mu.Lock()
 		a.cat, a.catAt = cat, time.Now()
 		a.mu.Unlock()
@@ -600,6 +707,7 @@ func (a *App) remove(w http.ResponseWriter, r *http.Request) {
 			Folder string `json:"folder"`
 		} `json:"items"`
 		Confirm bool `json:"confirm"`
+		Force   bool `json:"force"` // remove even what an installed plugin still needs
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
 		fail(w, 400, "bad request")
@@ -651,6 +759,16 @@ func (a *App) remove(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(plans) == 0 {
 		fail(w, 400, "nothing selected")
+		return
+	}
+	removing := map[string]bool{}
+	for _, p := range plans {
+		if p.ID != "" {
+			removing[p.ID] = true
+		}
+	}
+	if refused := removalRefusals(a.cat, a.installedVersions(), removing); len(refused) > 0 && !in.Force {
+		fail(w, 409, strings.Join(refused, "; ")+". Nothing was changed (remove anyway to do it regardless)")
 		return
 	}
 	j := &Job{ID: randHex(4), State: "running"}
@@ -799,7 +917,7 @@ func (a *App) patchList(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	if a.patches == nil || time.Since(a.patchesAt) > 10*time.Minute {
 		a.mu.Unlock()
-		ps, err := FetchPatches(a.patchesURL)
+		ps, err := a.fetchPatches()
 		a.mu.Lock()
 		switch {
 		case errors.Is(err, errNoPatches):
@@ -929,4 +1047,20 @@ func (a *App) patchRun(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 	writeJSON(w, 200, map[string]string{"job": j.ID})
+}
+
+func mustSub(f fs.FS, dir string) fs.FS {
+	sub, err := fs.Sub(f, dir)
+	if err != nil {
+		panic(err)
+	}
+	return sub
+}
+
+// nonNil makes an empty list encode as [] rather than null.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

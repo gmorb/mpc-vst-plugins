@@ -4,6 +4,11 @@ Gen2 MPC devices (MPC Live III and kin, RK3588) run a 64-bit userland: `/usr/bin
 `/usr/lib/ld-linux-aarch64.so.1` and there are no 32-bit libraries, so Gen1's armv7 `.so` files cannot load
 (analysed 2026-10-06 from the 3.9.1 Gen2 update image, offline; see `docs/FIRMWARE_BUILDER.md`). A plugin needs a second, aarch64 build.
 
+**Hardware map (from inMusic's published device trees, 2026-11-08, offline; `docs/AZ0X_SOURCE.md`):** Live III = ACVG and XL = ACVC
+(full RK3588; the Live III has PCIe/NVMe, a battery gauge and `inmusic,nvme-fitted`), One G2 = ACVA3 and Key 37 G2 = ACVR2 (RK3588S).
+All run a PREEMPT_RT kernel with the `performance` governor. The MPC Sample (RK3566, AC50) is a separate aarch64 board:
+`docs/MPC_SAMPLE.md`.
+
 **Status (2026-10-11): two Gen2 device confirmations, pilot phase done.** Crate Digger 1.1.9 and Profit-08 0.1.1's aarch64 builds
 both installed on a real MPC Live III (MPC OS 3.9.1, the official user-facing version; the "5.0.18 (scarthgap)" read on the
 device is the underlying az01/buildroot base, not the MPC OS version), registered, showed up in MPC's plugin browser and ran (Crate Digger's skin
@@ -19,6 +24,23 @@ feature on our side). Both plugins' `tested.json` carry the device. This settles
   are at `/data/Settings/MPC/MPC.settings`. JV-880 1.0.8 aarch64 installed there (`install.sh -t /nvme/Synths`) loads, draws its
   skin, browses expansions and makes sound — `pluginList-arm-64bit` confirmed again. The installer now handles this: `mpc-store.sh`
   defaults to `/nvme/Synths` when `/sdcard` is absent, and `tools/desktop` scans `/nvme/Synths` and makes it the "internal drive".
+- **MPC One (Gen2), MPC OS 3.9.1 (2026-10-28, a user's `mount`/`df -h` over SSH plus the stock firmware's mount units, offline):
+  no NVMe.** `/` is a 624 MB dm-verity root (96% used); `/synths` is eMMC `mmcblk0p11` (17.8 GB, 91% used, 1.5 GB free);
+  `/data` is `mmcblk0p12` (33 GB, shown 100% used: it holds the user-storage image); **`/storage` is a 31 GB loopback
+  (`loop0p1`, 17 GB free)**, the Key 37's layout; the SD card is `/media/MPC`. The firmware mounts `/nvme`, `/content`,
+  `/sdcard` or `/storage` depending on device tree flags under `/sys/firmware/devicetree/base/chosen/` (`inmusic,nvme-fitted`,
+  `inmusic,emmc-content`, `inmusic,internal-sd-fitted`, `inmusic,acvs-loopback-content`), so the internal drive is not
+  `/nvme/Synths` everywhere. `tools/desktop` now tries `/nvme/Synths` then `/storage/Synths` as the internal drive and lists
+  `/storage` as a drive that can be given a Synths folder; `mpc-store.sh` falls back the same way. **Confirmed by the same
+  user's follow-up (2026-10-28, `mount` and `grep` over SSH):** `/storage` is `exfat (rw,relatime,fmask=0022,dmask=0022,...)`,
+  no `noexec`; `/synths` is `ext4 (ro)`; `/data` is `ext4 (rw)`. Their `MPC.settings` `SynthContentLocations` lists
+  `/media/MPC/Synths` and `/storage/Synths`, and eight plugins (including Acid-303) are already installed and registered under
+  `/storage/Synths`, so that folder exists, is executable and is what MPC scans; the full `/data` did not stop earlier
+  settings edits. Their `Content.Manager.Directory` is `/media/MPC/` (the SD card, `mmcblk1p1`), so the community manager 1.2.1's
+  "automatic" plugin location would be `/media/MPC/Synths` (also registered with MPC), not `/storage/Synths`; whether that SD
+  mount permits executables was not shown (the manager refuses a `noexec` drive and then wants SETUP > Plugin location).
+  `tools/release.py` used to print `-t /nvme/Synths` for every Gen2 build, wrong on a One: since 2026-10-28 a Gen2 `INSTALL.md` says
+  `<your Synths folder>` and tells the reader to take it from `SynthContentLocations` (`/nvme/Synths` Live III, `/storage/Synths` One).
 - `vst.json` `targets: ["armv7", "aarch64"]` + `tools/build_port.sh ... all` is now proven end to end on a second, ordinary port
   (Profit-08: no custom build script, just the generic path) — any future port can follow the same checklist (docs/PORTING.md).
 
@@ -30,7 +52,7 @@ Gen2 unit's stock MPC OS 3.9.1 as on Gen1/Force: inserting a stick with a signed
 on demand (not persistent across reboot; see `docs/USB_STICK.md` for the generator, offline-tested, not yet run by us on Gen2
 hardware). **MPC OS 3.10.0 removes this mechanism** — confirmed by a static diff of the stock update images: the `.check`/`open.sh`
 strings and the salt bytes are gone from 3.10.0's `MPC` binary, replaced by a `*.scriptpkg`/`az01-signed-fs` signed-package scheme.
-A device already updated to 3.10+ has no documented root route from this project. (One unverified community report says a live
+A device already updated to 3.10+ has no documented root route from this project, but Eurikon's plugin manager stick works there (confirmed on a Live III running stock 3.10, 2026-10-29, device: it opened on insertion because the helper, `Plugin Manager helper.xpa`, had been imported earlier and persisted in the shared `/nvme/MPC Documents`; the helper is still required once on 3.10); it runs only his manager, not our SSH or addin steps (his helper copies a fixed, hash-checked file list and never runs the stick's `open.sh`, read from its `bootstrap.sh` v1.2.2). (One unverified community report says a live
 OTA update to "3.10.0" left a device's rootfs still reporting "3.9.1" underneath — if real, that specific device might still take
 an old-scheme stick; not something to rely on.)
 
@@ -63,6 +85,13 @@ Still no real Gen2 device run. See NOTES.md 2026-10-20.
   arch `aarch64` (checked). `catalog.tsv` has `-` in the size/sha256/url columns, so `mpc-store.sh` on a Gen1 device or a Force says "Gen2 only" and installs
   nothing (`list` shows `[Gen2 only]`), the desktop installer's `ForArch` refuses it the same way, and the site shows a "Gen2 only" tag and a single
   "Download (Gen2)" button. Offline tests only (`tools/test_catalog.py`, `tools/desktop/gen2_test.go`); the site template change is not run in a browser.
+- **`mpc-store.sh install <id>...` with more than one id: an id with no build for this device's architecture is skipped, not fatal**
+  (2026-10-25 fix -- found on a real Gen2 device: `install plugin-manager` used to abort the whole batch immediately with no build
+  for Gen2, so the USB stick's default install, `plugin-manager`, silently prevented any other configured catalog plugin from
+  being attempted, even though the stick's SSH setup and addin reapply run separately before it and were never affected). The
+  summary line says how many were skipped and why (`"Installed 2 of 3 (1 skipped: no build for this device)."`), and the run is
+  not reported as a failure (exit 0) when every requested id was skipped for this reason -- only a real error (download, checksum,
+  unzip, or the plugin's own installer failing) still returns non-zero.
 
 ## Installer
 - `install.sh` reads `arch` from the package's `mpc-plugin.json` (absent = armv7) and refuses on a mismatch with `uname -m`, naming the
@@ -90,6 +119,8 @@ was tested on a Gen2 unit is in its hover text, the card's Gen2 row and the Veri
 "Download (Gen2)". A passing aarch64 build is not "tested": that needs the device string. Use e.g. `"device": "MPC Live III (Gen2)"` in `tested.json`.
 The same rule splits the Verified badge (2026-10-12, offline): the newest stable release gets "Verified Gen2" from such an entry (only when it
 has an aarch64 build) and "Verified Gen1" from any other entry, each its own badge and Tier filter option (`verified_on` in `catalog.json`).
+The MPC Sample also runs the aarch64 build but is not Gen2: since 2026-11-05 a test on it gives "Verified Sample", and an entry for the
+Sample only carries `devices` (CATALOG.md, "Device-limited entries").
 Checked in Chromium (Playwright) against a fixture catalog with two Gen2 versions.
 
 ## Developers

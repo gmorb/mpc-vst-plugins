@@ -2,6 +2,7 @@
  * Contract: 44100 Hz, interleaved int16 stereo, rendered in 128-frame blocks. Parameters are
  * string key/value pairs; the keys and their ranges come from the port's generated params.h.
  * An engine written for another host plugs in through a small adapter (see adapters/).
+ * The desktop VST3 wrapper (vst3_wrap.c, docs/DESKTOP_VST3.md) keeps this contract at any host rate: it resamples to and from 44100.
  * Optional keys the wrapper asks get_param() for: "state" (chunk save/restore), "<key>_name" / "<key>_display"
  * (dynamic names and value text), and with vst.json "programs" on a whole-number param, "<key>:<n>" (preset n's
  * name, without loading it; unanswered = "<Name> <n>").
@@ -41,3 +42,9 @@ const mpc_engine_t *mpc_engine(void);
  * (a C++ engine defines it extern "C", as it does mpc_engine()). Unlike HAS_DISPLAY_REV, nothing is polled: only the
  * keys the engine names are read back. `poc/selfset` is the test engine. */
 int mpc_engine_changed(void *inst, char *key, int len) __attribute__((weak));
+
+/* Optional, MPC Sample only (vst.json "sample_page", wrapper/sample_page.h): draw into the page's free area, the rectangle
+ * x, y, w, h of px (0xRRGGBB, row-major, stride pixels a row), below the page's readouts and above its knobs. Called on the
+ * page's own thread at its frame rate, while the page is on screen, WITHOUT the engine lock: read state the way a screen
+ * thread would (atomics, a snapshot), never block. Return value unused (0). A weak symbol, as mpc_engine_changed. */
+int mpc_engine_sample_draw(void *inst, uint32_t *px, int stride, int x, int y, int w, int h) __attribute__((weak));

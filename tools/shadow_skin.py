@@ -180,7 +180,7 @@ def parse_layout(path):
     return tabs, top
 
 
-INT_KEYS = ("x", "y", "w", "h", "cx", "cy", "r", "sw", "sh", "rows", "cols", "th", "gap", "cw", "ns", "vs", "bw", "bh")
+INT_KEYS = ("x", "y", "w", "h", "cx", "cy", "r", "sw", "sh", "rows", "cols", "th", "gap", "cw", "ns", "vs", "vy", "bw", "bh")
 
 
 def parse_widget(line):
@@ -675,7 +675,7 @@ def _value_label(x, y, w, h, size, colour, just="horizontallyCentred verticallyC
 
 def text_sfx(w, cw):
     """Definition-key suffix for a control's own ns=/vs=/bw= (controls that differ need their own definition)."""
-    return "".join("_%s%d" % (k, w[k]) for k in ("ns", "vs", "bw") if w.get(k) is not None)
+    return "".join("_%s%d" % (k, w[k]) for k in ("ns", "vs", "vy", "bw") if w.get(k) is not None)
 
 
 def _name_label(x, y, w, h, size, colour, just="horizontallyCentred verticallyCentred"):
@@ -937,7 +937,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 if w.get("ns") is not None:
                     name_h = 0 if w["ns"] == 0 else max(name_h, round(w["ns"] * 1.2))
                 name_y = s // 2 + r + 2
-                value_y = name_y + name_h + (2 if name_h else 0)
+                value_y = name_y + name_h + (2 if name_h else 0) + int(w.get("vy") or 0)   # vy=: push the value text down (below a label baked into the art)
                 value_h = round(26 * LABEL_SCALE) if w.get("vs") is None else max(round(26 * LABEL_SCALE), round(w["vs"] * 1.2))
                 novalue = w.get("vs") == 0   # vs=0: no value text under the knob (the artwork has its own labels)
                 if novalue:
@@ -1044,14 +1044,17 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 sliders.add((img, sw_, sh_, vert, lid, nfr))
                 # as stock skins (Electric slider_distance 250x6969 = 101 frames of 69): frames of the slider's own
                 # w x h, numFrames = their count, bounds = the slider (docs/NOTES.md 2026-10-07)
-                cw = max(sw_, w["bw"]) if w.get("bw") else max(130, sw_)
-                nfont, vfont = float(17 if w.get("ns") is None else w["ns"]), float(22 if w.get("vs") is None else w["vs"])
-                name_h = 0 if nfont == 0 else max(20, round(nfont * 1.2))
+                # scale_names=1: the name/value text and the label width follow label_scale, as a knob's do
+                cw = max(sw_, w["bw"]) if w.get("bw") else max(round(130 * LABEL_SCALE) if SCALE_NAMES else 130, sw_)
+                nfont = NAME_FONT("knob") if w.get("ns") is None else float(w["ns"])
+                vfont = (22.0 * LABEL_SCALE if SCALE_NAMES else 22.0) if w.get("vs") is None else float(w["vs"])
+                name_h = 0 if nfont == 0 else max(NAME_H(), round(nfont * 1.2))
                 value_h = max(26, round(vfont * 1.2))
                 name_y = sh_ + 2
                 value_y = name_y + name_h + (2 if name_h else 0)
                 ch = value_y + value_h + 6
-                key = "shSlider_%s_%dx%d%s%s" % ("v" if vert else "h", sw_, sh_, sfx, text_sfx(w, cw))
+                key = "shSlider_%s_%dx%d%s%s%s" % ("v" if vert else "h", sw_, sh_, sfx, text_sfx(w, cw),
+                                                    ("_ls%g" % LABEL_SCALE) if SCALE_NAMES and LABEL_SCALE != 1.0 else "")
                 defs.setdefault(key, _local(key, [_action("Mouse Down", "Q-Link"),
                                                   _action("Double Click", "Show Overlay", "knob overlay"),
                                                   _action("Enter Pressed", "Show Overlay", "knob overlay")], [
@@ -1514,7 +1517,27 @@ def to_mpc2x(tui):
     return tui
 
 
-def write_skin(outdir, vendor, name, layout_path, params, art_bin, mpc_os=None):
+def vst_version(v):
+    """vst.json "version" (the VST2 int: 1000 = 1.0.0.0, 3100 = 3.1.0.0) -> MPC's four-part version.xml string.
+    Every port used to ship 1.0.0.0 regardless, so MPC showed 1.0.0.0 for a 3.1.0 plugin (found 2026-10-28).
+
+    The int is the only version carrier here: gen_vst.py writes it verbatim as PLUG_VERSION and returns it from
+    effGetVendorVersion (wrapper/vst2_wrap.c), so the decomposition below is exactly what the host read before.
+    Its fields are positional, major*1000 + minor*100 + patch*10 + build: one decimal digit for minor, patch and
+    build, any number for major. A minor or patch above 9 rolls into the field left of it (patch 10 is the next
+    minor: 3190 + 10 = 3200 reads as 3.2.0.0), and that roll-over cannot be detected from the int alone, so keep
+    each digit in 0..9 -- 3.1.10 is not representable, ship 3.2.0 instead."""
+    v = int(v if v is not None else 1000)
+    return "%d.%d.%d.%d" % (v // 1000, (v // 100) % 10, (v // 10) % 10, v % 10)
+
+
+def version_xml(vendor, name, version=None):
+    return ("<?xml version='1.0' encoding='utf-8'?>\n<plugincontent version=\"1.0\">\n"
+            "\t<identifier>%s.vst.%s</identifier>\n\t<version>%s</version>\n</plugincontent>\n"
+            % (vendor, name.lower().replace(" ", ""), vst_version(version)))
+
+
+def write_skin(outdir, vendor, name, layout_path, params, art_bin, mpc_os=None, version=None):
     """Build the whole skin folder <outdir>/<vendor> - VST - <name>/ from a layout. Needs Pillow.
     mpc_os=2 (or SHADOW_SKIN_MPC_OS=2) writes TUI.json in the older MPC OS 2.x shape (to_mpc2x); default is 3.x."""
     import json
@@ -1537,10 +1560,7 @@ def write_skin(outdir, vendor, name, layout_path, params, art_bin, mpc_os=None):
     qlinks = {"version": 4, "info": {"version": 1, "type": "CompleteDescription"},
               "Screen Mode Q-Links": {"version": 4, "map": qmap},
               "Program Mode Q-Links": program_qlinks(layout_path, params, qmap)}
-    open(os.path.join(d, "version.xml"), "w").write(
-        "<?xml version='1.0' encoding='utf-8'?>\n<plugincontent version=\"1.0\">\n"
-        "\t<identifier>%s.vst.%s</identifier>\n\t<version>1.0.0.0</version>\n</plugincontent>\n"
-        % (vendor, name.lower().replace(" ", "")))
+    open(os.path.join(d, "version.xml"), "w").write(version_xml(vendor, name, version))
     for f, obj in (("TUI.json", tui), ("Q-Links.json", qlinks), ("Q-Links - 8by1.json", qlinks)):
         # a huge TUI.json (every nested Q-Link page repeats its tab's layout) is written compact: the indentation alone is
         # about 3/4 of the file, which MPC has to read and parse when the plugin loads. Small skins stay byte-identical.

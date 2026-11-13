@@ -5,7 +5,8 @@ bad address, keep the selection in the link, the screenshot popup and its link, 
   docker build -q -t mpc-vst-html-art tools/html_art
   docker run --rm -v /tmp:/w -v "$PWD/tools/catalog_site":/t -w /w mpc-vst-html-art python3 /t/browser_test.py /w/site/index.html /w
 
-The last two arguments are the built page and a folder for two screenshots (shot-desktop.png, shot-phone.png)."""
+The last two arguments are the built page and a folder for the screenshots (shot-desktop.png, shot-phone.png, shot-collection-card.png,
+shot-collection-view.png). Also covers collections: one card per collection, per-tab counts, search, the #c= view with Pick all, share pages."""
 import base64, os, re, sys
 from playwright.sync_api import sync_playwright
 URL = "file://" + sys.argv[1]
@@ -73,8 +74,8 @@ with sync_playwright() as p:
         cards = pg.locator("#grid article.card")
         wrong = [i for i in range(cards.count()) if row not in (cards.nth(i).locator("dl.meta").text_content() or "")]
         check("filter %s shows only cards whose MPC OS row matches" % val, cards.count() >= 1 and not wrong, "%d cards, wrong %s" % (cards.count(), wrong))
-    pg.select_option("#f-os", index=0)
-    pg.select_option("#f-tier", index=0)
+    pg.select_option("#f-os", "")
+    pg.select_option("#f-tier", "")
     os_tags = pg.locator("#grid .tag").filter(has_text="MPC OS")
     check("no 3.x badge; the only MPC OS badge is '2.x tested'", os_tags.count() >= 1 and set(os_tags.all_text_contents()) == {"MPC OS 2.x tested"},
           str(os_tags.all_text_contents()))
@@ -92,7 +93,7 @@ with sync_playwright() as p:
             if cards.count():
                 check("a Gen2 card has both download buttons",
                       cards.first.locator("a.btn-l:has-text('Gen1')").count() == 1 and cards.first.locator("a.btn-l:has-text('Gen2')").count() == 1)
-    pg.select_option("#f-gen", index=0)
+    pg.select_option("#f-gen", "")
     # Trust tiers: experimental is hidden by default, shown by the Tier filter or "Show them"; Recommended puts featured, then Verified, first.
     pg.goto(URL); pg.reload()
     pg.select_option("#f-tier", "all")
@@ -103,20 +104,40 @@ with sync_playwright() as p:
     check("Listed has no badge; Verified and Experimental do", pg.locator("#grid article[data-tier=listed] .tag[class*=tier-]").count() == 0
           and pg.locator("#grid article[data-tier=verified] .tag.tier-verified").count() >= 1)
     check("Recommended sorts by tier", [rank[t] for t in tiers] == sorted(rank[t] for t in tiers), str(tiers))
+    # "Newest in catalog" sorts by when the entry was added (catalog/added.json), newest first, not by release date
+    import json
+    fixture = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixture-catalog.json")))
+    # one card per plugin outside a collection (Sample-only ones show in the MPC Sample view only), one per collection (its "added" is its oldest member's)
+    cards = [(x["added"], x["name"]) for x in fixture["plugins"] if not x.get("collection") and not x.get("devices")] + [(c["added"], c["title"]) for c in fixture["collections"]]
+    want = [n.upper() for _, n in sorted(cards, key=lambda t: t[0], reverse=True)]
+    pg.select_option("#sort", "added")
+    got = [t.upper() for t in pg.locator("#grid article.card h2").all_inner_texts()]
+    check("Newest in catalog sorts by date added, newest first", got == want, "%s vs %s" % (got, want))
+    pg.select_option("#sort", "recommended")
     # Verified is split by device generation: one badge per generation, and a Tier filter option for each
     both = pg.locator("#grid article:has(h2:has-text('Tested Two')) .tag.tier-verified").all_text_contents()
     check("a plugin tested on both generations has two Verified badges", both == ["Verified Gen1", "Verified Gen2"], str(both))
-    for val, gen in (("verified-gen1", "gen1"), ("verified-gen2", "gen2")):
-        pg.select_option("#f-tier", val)
+    # the MPC Sample has its own badge, and an entry limited to it (registry "devices") says so instead of "Gen2"
+    pg.click("#tab-addin"); pg.click('[data-plat="sample"]')   # Sample-only entries show in the MPC Sample view only
+    smp = pg.locator("#grid article:has(h2:has-text('Sample Only'))")
+    check("a plugin tested on an MPC Sample has the Verified Sample badge",
+          smp.locator(".tag.tier-verified").all_text_contents() == ["Verified Sample"], str(smp.locator(".tag.tier-verified").all_text_contents()))
+    check("a plugin for the MPC Sample only says so", smp.locator(".tag:has-text('MPC Sample only')").count() == 1
+          and smp.locator(".tag:has-text('Gen2')").count() == 0, smp.inner_text()[:200])
+    dl = smp.locator("a.btn-l:has-text('Download')").all_text_contents()
+    check("a plugin for the MPC Sample only has one download, named for the Sample", dl == ["Download (MPC Sample)"], str(dl))
+    pg.click('[data-plat=""]'); pg.click("#tab-all")
+    for val, gen in (("verified-gen1", "gen1"), ("verified-gen2", "gen2"), ("verified-sample", "sample")):
+        pg.click('[data-plat="%s"]' % ("sample" if gen == "sample" else "")); pg.select_option("#f-tier", val)
         cards = pg.locator("#grid article.card")
         wrong = [i for i in range(cards.count()) if cards.nth(i).locator(".tag.tier-verified[data-gen=%s]" % gen).count() != 1]
         check("Tier filter %s shows only cards with that badge" % val, cards.count() >= 1 and not wrong, "%d cards, wrong %s" % (cards.count(), wrong))
-    pg.select_option("#f-tier", index=0)
+    pg.select_option("#f-tier", ""); pg.click('[data-plat=""]')
     check("experimental plugins are hidden by default", pg.locator(".tag.tier-experimental").count() == 0)
     check("the hidden-experimental note offers them", pg.locator("#exp").is_visible())
     pg.click("#show-exp")
     check("Show them reveals experimental plugins", pg.locator(".tag.tier-experimental").count() >= 1)
-    pg.select_option("#f-tier", index=0)
+    pg.select_option("#f-tier", "")
     check("only a plugin missing something shows 'To improve'", pg.locator("#grid details.how:has-text('To improve')").count() == 1)
     # Screenshot popup: the image opens the whole card over a dark backdrop, with its own link (#...&p=<id>)
     pg.goto(URL); pg.reload()
@@ -177,6 +198,118 @@ with sync_playwright() as p:
     pg.goto("file://" + os.path.join(site, "p", "test-synth.html"))
     pg.wait_for_url(re.compile(r"index\.html#p=test-synth$"))
     check("the share page opens the popup", pg.locator("#modal").is_visible() and pg.locator("#modal h2").text_content() == "Test Synth")
+    # Collections (docs/CATALOG.md): the fixture's five acme/pack plugins are one card (Pack Drive is experimental, a beta only)
+    pg.goto(URL); pg.reload()
+    coll = pg.locator("#grid article.coll")
+    check("a collection is one card", coll.count() == 1 and coll.locator("h2").text_content() == "Acme Pack", str(coll.count()))
+    check("its members get no card of their own", pg.locator("#grid article:not(.coll) h2").filter(has_text="Pack ").count() == 0)
+    check("the card has the Collection badge, the best member tier and the kind counts",
+          coll.locator(".tag.coll").text_content() == "Collection" and coll.get_attribute("data-tier") == "verified"
+          and coll.locator(".tag.tier-verified").all_text_contents() == ["Verified Gen1"]
+          and coll.locator(".counts").text_content() == "1 instrument \u00b7 1 MIDI plugin \u00b7 3 effects", coll.locator(".counts").text_content())
+    chips = lambda: coll.locator(".chip:not(.more)").all_text_contents()
+    check("first members as chips, the experimental one hidden by default, no match line", sorted(chips()) == ["Pack Gate", "Pack Kick", "Pack Seq", "Pack Verb"]
+          and coll.locator(".chip.more").count() == 0 and coll.locator(".matchline").count() == 0, str(chips()))
+    check("the count line counts plugins, members included", pg.locator("#count").text_content().startswith("7 of 9 "), pg.locator("#count").text_content())
+    pg.select_option("#f-tier", "all")
+    check("more members than chips: +N", len(chips()) == 4 and coll.locator(".chip.more").text_content() == "+1")
+    pg.select_option("#f-tier", "")
+    check("the card links to the collection page and the repo", coll.locator("a.btn-l", has_text="View all").get_attribute("href") == "p/c/acme-pack.html"
+          and coll.locator("a.btn-l", has_text="Source").get_attribute("href") == "https://github.com/acme/pack")
+    for tab, counts, names in (("instrument", "1 instrument", ["Pack Kick"]), ("midi", "1 MIDI plugin", ["Pack Seq"]), ("effect", "3 effects", ["Pack Gate", "Pack Verb"])):
+        pg.click("#tab-" + tab)
+        check("tab %s: the card shows with that kind's members only" % tab, coll.count() == 1 and coll.locator(".counts").text_content() == counts
+              and sorted(chips()) == names, "%s %s" % (coll.locator(".counts").all_text_contents(), chips()))
+    pg.click("#tab-addin")
+    check("not under a kind it does not cover", coll.count() == 0)
+    pg.click("#tab-all")
+    check("tab counts count the members", pg.locator("#n-effect").text_content() == "3" and pg.locator("#n-midi").text_content() == "1", pg.locator("#n-effect").text_content())
+    pg.fill("#q", "shimmer")
+    check("a search that matches a member surfaces the card with that member", coll.count() == 1 and chips() == ["Pack Verb"]
+          and coll.locator(".matchline").text_content().startswith("1 of 5 match"), str(chips()))
+    pg.fill("#q", "acme pack")
+    check("a search for the collection's title shows all its members", coll.count() == 1 and len(chips()) == 4)
+    pg.fill("#q", "drum")
+    check("a word in its summary lists only the members that match", coll.count() == 1 and chips() == ["Pack Kick"]
+          and coll.locator(".matchline").text_content().startswith("1 of 5 match"), str(chips()))
+    pg.fill("#q", "every acme plugin")
+    check("its summary alone does not surface it", coll.count() == 0)
+    pg.fill("#q", "nothing like this")
+    check("a search matching no member hides it", coll.count() == 0)
+    pg.fill("#q", ""); pg.select_option("#f-dev", "Acme")
+    check("filters apply to members", coll.count() == 1 and pg.locator("#grid article").count() == 1)
+    pg.select_option("#f-dev", ""); pg.dispatch_event("#f-dev", "change")
+    pg.select_option("#sort", "downloads")
+    check("sorted by its members' total downloads", pg.locator("#grid article.card").first.get_attribute("class") == "card coll")
+    pg.select_option("#sort", "recommended")
+    tiers = pg.locator("#grid article.card").evaluate_all("e => e.map(x => x.getAttribute('data-tier'))")
+    check("Recommended places it by its best member tier", [rank[t] for t in tiers] == sorted(rank[t] for t in tiers) and tiers.index("verified") == 0, str(tiers))
+    # the collection view: members by kind, ticks and Pick all feed the install list
+    coll.locator("a.btn-l", has_text="View all").click()
+    check("View all opens the collection view with its own link", pg.locator("#modal").is_visible() and pg.locator("#modal h2").text_content() == "Acme Pack"
+          and "c=acme-pack" in pg.evaluate("location.hash"), pg.evaluate("location.hash"))
+    heads = pg.locator("#modal .cgroup h3").all_text_contents()
+    check("members grouped by kind", heads == ["Instruments (1)", "MIDI (1)", "Effects (3)"], str(heads))
+    check("every member is listed, experimental too, with a badge", pg.locator("#modal .member").count() == 5
+          and pg.locator("#modal .member:has-text('Pack Drive') .tag.tier-experimental").count() == 1)
+    check("a member without a stable release has no checkbox", pg.locator("#modal [data-pick=pack-drive]").count() == 0 and pg.locator("#modal [data-pick]").count() == 4)
+    pg.click("#modal [data-pickall=effect]")
+    sel = pg.evaluate("location.hash").replace("%2C", ",")
+    check("Pick all ticks the group's installable members", pg.locator("#modal [data-pick=pack-gate]").is_checked() and pg.locator("#modal [data-pick=pack-verb]").is_checked()
+          and "pack-gate" in sel and "pack-verb" in sel and pg.locator("#modal [data-pickall=effect]").text_content() == "Unpick all", sel)
+    check("the install list has them", pg.locator("#inst-count").text_content() == "2 plugins selected" and "pack-verb" in pg.locator("#cmd-main").text_content())
+    pg.locator("#modal [data-pick=pack-kick]").check()
+    check("a single tick joins the list", pg.locator("#inst-count").text_content() == "3 plugins selected")
+    pg.click("#modal [data-pickall=effect]")
+    check("Unpick all clears the group only", pg.locator("#inst-count").text_content() == "1 plugin selected" and pg.locator("#modal [data-pickall=effect]").text_content() == "Pick all")
+    pg.evaluate("navigator.clipboard.writeText = function (t) { window.copied = t; return Promise.resolve(); }; window.matchMedia = function () { return { matches: false }; }")
+    pg.click("#modal-share")
+    check("Copy link copies the collection page", (pg.evaluate("window.copied") or "").endswith("/p/c/acme-pack.html"), str(pg.evaluate("window.copied")))
+    pg.click("#modal .member a.nm:has-text('Pack Verb')")
+    check("a member opens its own popup, with the breadcrumb", pg.locator("#modal h2").text_content() == "Pack Verb"
+          and pg.locator("#modal .crumb").text_content() == "Part of Acme Pack" and "p=pack-verb" in pg.evaluate("location.hash"))
+    pg.keyboard.press("Escape"); pg.wait_for_function("document.querySelector('#modal h2') && document.querySelector('#modal h2').textContent === 'Acme Pack'")
+    check("Escape goes back to the collection", pg.locator("#modal").is_visible() and "p=" not in pg.evaluate("location.hash"))
+    pg.keyboard.press("Escape"); pg.wait_for_function("document.getElementById('modal').hidden")
+    check("and Escape again closes it", "c=" not in pg.evaluate("location.hash") and pg.locator("#grid [data-coll]").count() >= 1)
+    coll.locator(".chip", has_text="Pack Kick").click()
+    check("a chip opens the member's popup", pg.locator("#modal h2").text_content() == "Pack Kick")
+    pg.click("#modal .crumb a")
+    check("the breadcrumb opens the collection", pg.locator("#modal h2").text_content() == "Acme Pack" and "c=acme-pack" in pg.evaluate("location.hash")
+          and pg.locator("#modal [data-pick=pack-kick]").is_checked())
+    pg.keyboard.press("Escape"); pg.wait_for_function("document.querySelector('#modal h2') && document.querySelector('#modal h2').textContent === 'Pack Kick'")
+    check("Escape steps back through the history: the member first", pg.locator("#modal").is_visible() and "c=" not in pg.evaluate("location.hash"))
+    pg.keyboard.press("Escape"); pg.wait_for_function("document.getElementById('modal').hidden")
+    pg.goto(URL + "#c=acme-pack"); pg.reload()
+    check("a #c= link opens the collection view", pg.locator("#modal").is_visible() and pg.locator("#modal h2").text_content() == "Acme Pack")
+    for junk in ("nope", "<b>x</b>", "pack-kick"):
+        pg.goto(URL + "#c=" + junk); pg.reload()
+        check("c=%s opens nothing" % junk, pg.locator("#modal").is_hidden())
+    cshare = open(os.path.join(site, "p", "c", "acme-pack.html"), encoding="utf-8").read()
+    og = dict(re.findall(r'<meta (?:property|name)="([^"]+)" content="([^"]*)"', cshare))
+    check("collection share page: Open Graph tags, a member's screenshot, members by kind", og.get("og:title") == "Acme Pack by Acme"
+          and og.get("og:image") == "https://shots.invalid/pack-kick.png" and "http-equiv" not in cshare
+          and re.findall(r"<h2>([^<]+)</h2>", cshare) == ["Instruments (1)", "MIDI (1)", "Effects (3)"] and 'href="../pack-verb.html"' in cshare, str(og))
+    mshare = open(os.path.join(site, "p", "pack-verb.html"), encoding="utf-8").read()
+    check("a member's share page says which collection it is part of", 'Part of <a href="c/acme-pack.html">Acme Pack</a>' in mshare)
+    check("a plugin outside a collection has no breadcrumb", "Part of" not in share)
+    pg.goto("file://" + os.path.join(site, "p", "c", "acme-pack.html"))
+    pg.wait_for_url(re.compile(r"index\.html#c=acme-pack$"))
+    check("the collection share page opens the collection view", pg.locator("#modal").is_visible() and pg.locator("#modal h2").text_content() == "Acme Pack")
+    pg.goto(URL); pg.reload()
+    pg.screenshot(path=SHOTS + "/shot-collection-card.png", full_page=True)
+    coll.locator("a.btn-l", has_text="View all").click()
+    pg.screenshot(path=SHOTS + "/shot-collection-view.png")
+    pg.goto(URL + "#p=tested-two"); pg.reload()
+    dd = pg.locator("#modal dl.meta").text_content()
+    check("the popup lists what the version depends on and conflicts with", "Depends onTest Synth \u22651.1.0 (added for you by the installers)" in dd and "ConflictsThree Only" in dd, dd)
+    check("the popup shows maintenance from the nightly build", "Maintenance4 open issues \u00b7 1 waiting over 60 days for a reply (oldest 2026-08-01)" in dd, dd)
+    pg.goto(URL + "#p=test-synth"); pg.reload()
+    check("no Maintenance row without the field", "Maintenance" not in pg.locator("#modal dl.meta").text_content())
+    pg.goto(URL + "#p=tested-two"); pg.reload()
+    pg.locator("#modal dd a[href='#p=test-synth']").click()
+    pg.wait_for_function("document.querySelector('#modal h2').textContent === 'Test Synth'")
+    check("a dependency links to its own popup", "p=test-synth" in pg.evaluate("location.hash"))
     check("no script errors", not errors, str(errors))
     m = b.new_page(viewport={"width": 390, "height": 800}, device_scale_factor=2)
     m.goto(URL + "#sel=" + ids[0]); m.reload()

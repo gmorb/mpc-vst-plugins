@@ -14,6 +14,7 @@
 #endif
 #include <stdint.h>
 #include <stdlib.h>
+#include <time.h>
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -129,6 +130,7 @@ typedef struct {
     int inpos;
     double bpm;
     volatile int holdFrames[NPARAMS];  /* momentary params: frames left before reporting back to 0 (hold_ms) */
+    long long press_ms[NPARAMS];       /* momentary params: when the last press that was acted on arrived (CLOCK_MONOTONIC ms), see set_param_now */
     volatile char changed[NPARAMS];  /* params the plugin changed itself (step_of on an option), to report */
     float last_pos[NPARAMS]; /* stepped params: the last position the host asked for, in steps (-1 = none yet) */
     float qacc[NPARAMS];     /* qlink_ticks: turn events counted toward the next step (see setParameter) */
@@ -146,6 +148,9 @@ typedef struct {
     int has_pend0;            /* (see setParameter) */
     char last_rev[16];       /* HAS_DISPLAY_REV: the "display_rev" last seen */
     float last_norm[NPARAMS];   /* HAS_DISPLAY_REV: value last reported per param (-1 = never) */
+#ifdef DISPLAY_REV_THREAD
+    pthread_t rev_th; volatile int rev_stop; int rev_th_on;   /* the display_rev reporter thread (see rev_scan) */
+#endif
     float open[NPARAMS];     /* popup "open" flags (popup.h): kept here, never sent to the DSP or saved */
     char chunk[8192];
     pthread_mutex_t lock;    /* one engine call at a time: see eng_set() */
@@ -155,6 +160,16 @@ typedef struct {
     int cc_report;           /* frames until CC-driven changes are reported again */
     int update_wait;         /* frames until another audioMasterUpdateDisplay may be sent (see housekeeping) */
     int program;             /* NPRESETS: the preset last picked (not in the engine's state; 0 after a reload) */
+    void *spage;             /* SAMPLE_PAGE: the page on the MPC Sample's screen (sample_page.h), or NULL */
+#ifdef SAMPLE_PAGE
+    /* The page runs on the draw handler's threads; what it changes is posted here and applied at the start of the next
+     * block (page_apply), on the thread that already applies MIDI CCs and the held parameter 0, so the host-side
+     * state cc_set and set_program touch (last_pos, qacc, press_ms, holdFrames ...) is never written from the page. */
+    float page_val[NPARAMS];
+    int page_has[NPARAMS];
+    int page_any;
+    int page_prog;           /* a preset the page's dial picked, -1: none */
+#endif
 #if SAMPLE_ACCURATE
     struct { int32_t frame; uint8_t msg[3]; } evq[WRAP_EVQ];   /* this block's MIDI, sorted by frame (see queue_midi) */
     int nev;
@@ -199,20 +214,35 @@ static void norm_to_str(const param_t *p, float n, char *buf, int len) {
 static float str_to_norm(const param_t *p, const char *s) {
     if (p->nopts) {
         int idx = -1;
-        if (isdigit((unsigned char)s[0])) idx = atoi(s);
-        else
-            for (int i = 0; i < p->nopts; i++)
-                if (!strcasecmp(s, p->opts[i])) idx = i;
+        /* An exact label match comes first, even when the label starts with a digit: option
+         * lists like {"1/32","1/16","1/8"} or {"201","202"} used to be parsed as numbers
+         * (atoi("1/16") == 1), so the host read back the wrong option and the control snapped
+         * back (mpc-vst-tape-echo, device 2026-10-31). Only a fully numeric answer is taken as
+         * the engine's own index. */
+        for (int i = 0; i < p->nopts; i++)
+            if (!strcasecmp(s, p->opts[i])) { idx = i; break; }
+        if (idx < 0) {
+            char *end = NULL;
+            const long v = strtol(s, &end, 10);
+            if (end && end != s && *end == 0) idx = (int)v;
+        }
         if (idx < 0) idx = 0;
+        if (idx >= p->nopts) idx = p->nopts - 1;   /* a numeric answer can be past the list */
         return p->nopts > 1 ? (float)idx / (p->nopts - 1) : 0;
     }
     return p->max > p->min ? clamp01((float)((atof(s) - p->min) / (p->max - p->min))) : 0;
 }
 
+/* cc_set() in progress on this thread: a MIDI CC/NRPN value is absolute, so nudge_gain doesn't multiply it. Per thread, so
+ * a host write on another thread at the same moment is still treated as a host write. */
+static __thread int absolute_set;
+
 static float get_norm(wrap_t *w, int i) {
     char buf[64];
     if (i < 0 || i >= NPARAMS) return 0;
-    if (i == 0 && __atomic_load_n(&w->has_pend0, __ATOMIC_ACQUIRE)) return w->pend0;   /* set, not applied yet */
+    if (i == 0 && __atomic_load_n(&w->has_pend0, __ATOMIC_ACQUIRE)) {   /* set, not applied yet */
+        float v; __atomic_load(&w->pend0, &v, __ATOMIC_RELAXED); return v;
+    }
     if (popup_is(i)) return w->open[i];
     if (PARAMS[i].string_display) {
         /* a text param's value is not its text: a DSP may expose "<key>_on" (list-tile selection) */
@@ -244,6 +274,17 @@ static void set_param_now(AEffect *e, int32_t i, float n) {
     if (i < 0 || i >= NPARAMS) return;
     const param_t *p = &PARAMS[i];
     int nudge = 0;
+    /* One tap on a drawn button reaches us as two presses 30 to 140 ms apart, with no release between (the finger going down and lifting;
+     * Live III, 2026-10-30, docs/NOTES.md), so "Program >" stepped two programs and a keyboard key typed twice. A momentary param ignores a
+     * second press within debounce_ms of the last one acted on (vst.json "debounce_ms", default 250, 0 = off). The wrapper's own spring-back
+     * to 0 and the host's echo of it are releases, not presses, and pass. */
+    if (p->momentary && p->debounce_ms > 0 && n > 0.5f) {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        long long now = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
+        if (w->press_ms[i] && now - w->press_ms[i] < p->debounce_ms) return;
+        w->press_ms[i] = now;
+    }
     if (popup_set(w->open, i, n)) {
         if (w->open[i] > 0.5f) popup_close_others(w->open, w->holdFrames, i);   /* one list at a time */
         return;
@@ -283,7 +324,7 @@ static void set_param_now(AEffect *e, int32_t i, float n) {
         w->need_update_display = 1;
         return;
     }
-    if (p->nudge_gain > 1 && p->nopts <= 1 && p->max > p->min) {
+    if (p->nudge_gain > 1 && p->nopts <= 1 && p->max > p->min && !absolute_set) {
         /* "nudge_gain": a small move (data wheel click, Q-Link event) is multiplied; a bigger one is a drag or a jump */
         const float cur = get_norm(w, i), d = n - cur;
         if (d != 0 && fabsf(d) < 0.02f) n = clamp01(cur + d * p->nudge_gain);
@@ -368,14 +409,17 @@ static void set_param_now(AEffect *e, int32_t i, float n) {
 static void flush_pend0(AEffect *e) {
     wrap_t *w = e->object;
     if (!__atomic_exchange_n(&w->has_pend0, 0, __ATOMIC_ACQ_REL)) return;
-    if (fabsf(w->pend0 - w->pend0_from) > 1e-6f) set_param_now(e, 0, w->pend0);
+    float to, from;   /* atomic: the host's thread may be setting a new pair while the audio thread flushes */
+    __atomic_load(&w->pend0, &to, __ATOMIC_RELAXED);
+    __atomic_load(&w->pend0_from, &from, __ATOMIC_RELAXED);
+    if (fabsf(to - from) > 1e-6f) set_param_now(e, 0, to);
 }
 
 static void setParameter(AEffect *e, int32_t i, float n) {
     wrap_t *w = e->object;
     if (i == 0 && NPARAMS > 0) {
-        if (!__atomic_load_n(&w->has_pend0, __ATOMIC_ACQUIRE)) w->pend0_from = get_norm(w, 0);
-        w->pend0 = n;
+        if (!__atomic_load_n(&w->has_pend0, __ATOMIC_ACQUIRE)) { float f = get_norm(w, 0); __atomic_store(&w->pend0_from, &f, __ATOMIC_RELAXED); }
+        __atomic_store(&w->pend0, &n, __ATOMIC_RELAXED);
         __atomic_store_n(&w->has_pend0, 1, __ATOMIC_RELEASE);
         return;
     }
@@ -477,6 +521,37 @@ static void render_events(wrap_t *w, float **out, int32_t n, int accumulate) {
 }
 #endif
 
+/* HAS_DISPLAY_REV: when the engine's "display_rev" moved, report every param whose value changed, so the host moves controls
+ * and re-evaluates IndexedEnabling (when= panels), not only text. Each report is an audioMasterAutomate, which MPC handles
+ * synchronously and which can wait on its UI thread: a plugin whose display_rev moves all the time (meters) stalled MPC's
+ * audio workers ~20 ms every few seconds from the audio thread (measured on a Live III). DISPLAY_REV_THREAD
+ * runs this on a normal-priority thread of the wrapper's own instead (rev_thread), every 100 ms. */
+static void rev_scan(wrap_t *w) {
+    char rev[16];
+    if (eng_get(w, "display_rev", rev, sizeof rev) > 0 && strcmp(rev, w->last_rev)) {
+        snprintf(w->last_rev, sizeof w->last_rev, "%s", rev);
+        if (!DISPLAY_REV_NO_UPDATE) w->need_update_display = 1;
+        for (int i = 0; i < NPARAMS; i++) {
+            if (PARAMS[i].momentary || popup_is(i) || PARAMS[i].string_display) continue;
+            float v = get_norm(w, i);
+            if (fabsf(v - w->last_norm[i]) > 1e-4f) { w->last_norm[i] = v; w->master(&w->fx, audioMasterAutomate, i, 0, 0, v); }
+        }
+    }
+}
+#ifdef DISPLAY_REV_THREAD
+#include <time.h>
+static void *rev_thread(void *arg) {
+    wrap_t *w = arg;
+    pthread_setname_np(pthread_self(), "vst-rev");
+    while (!w->rev_stop) {
+        struct timespec ts = {0, 100000000};
+        nanosleep(&ts, NULL);
+        if (!w->rev_stop) rev_scan(w);
+    }
+    return NULL;
+}
+#endif
+
 static void housekeeping(AEffect *e, int32_t n) {
     wrap_t *w = e->object;
     if (HAS_LFO_BPM || HAS_TRANSPORT || HAS_SONG_POS) update_tempo(w, n);
@@ -542,20 +617,11 @@ static void housekeeping(AEffect *e, int32_t n) {
             }
         }
     }
-    if (HAS_DISPLAY_REV && poll_rev) {
-        char rev[16];
-        if (eng_get(w, "display_rev", rev, sizeof rev) > 0 && strcmp(rev, w->last_rev)) {
-            snprintf(w->last_rev, sizeof w->last_rev, "%s", rev);
-            if (!DISPLAY_REV_NO_UPDATE) w->need_update_display = 1;
-            /* report what the engine changed by itself, so the host moves controls and re-evaluates
-             * IndexedEnabling (when= panels), not only text */
-            for (int i = 0; i < NPARAMS; i++) {
-                if (PARAMS[i].momentary || popup_is(i) || PARAMS[i].string_display) continue;
-                float v = get_norm(w, i);
-                if (fabsf(v - w->last_norm[i]) > 1e-4f) { w->last_norm[i] = v; w->master(&w->fx, audioMasterAutomate, i, 0, 0, v); }
-            }
-        }
-    }
+#ifndef DISPLAY_REV_THREAD
+    if (HAS_DISPLAY_REV && poll_rev) rev_scan(w);
+#else
+    (void)poll_rev;
+#endif
     /* parameters the engine changed by itself (engine.h mpc_engine_changed): reported as a CC's are, just below */
     if (mpc_engine_changed) {
         char key[64];
@@ -585,6 +651,10 @@ static void housekeeping(AEffect *e, int32_t n) {
     }
 }
 
+#ifdef SAMPLE_PAGE
+static void page_apply(wrap_t *w);   /* sample_page.h */
+#endif
+
 #ifdef PLUG_EFFECT
 static int16_t f2s(float f) { f *= 32768.0f; return f >= 32767.0f ? 32767 : f <= -32768.0f ? -32768 : (int16_t)lrintf(f); }
 
@@ -593,6 +663,9 @@ static int16_t f2s(float f) { f *= 32768.0f; return f >= 32767.0f ? 32767 : f <=
 static void run_block(AEffect *e, float **in, float **out, int32_t n, int accumulate) {
     wrap_t *w = e->object;
     flush_pend0(e);   /* parameter 0, set since the last block (setParameter) */
+#ifdef SAMPLE_PAGE
+    page_apply(w);    /* knob, dial and preset changes from the page on the MPC Sample's screen */
+#endif
     housekeeping(e, n);
     /* A conforming host passes real input to an effect, but a plugin scanner (and the device's own load
      * probe) may call processReplacing with in == NULL; treat a missing input channel as silence. */
@@ -610,10 +683,11 @@ static void run_block(AEffect *e, float **in, float **out, int32_t n, int accumu
             i += DSP_BLOCK;
             continue;
         }
+        /* MPC processes in place (in == out): take this frame's input before writing its output. */
+        w->inb[2 * w->inpos] = have_in ? f2s(in[0][i]) : 0; w->inb[2 * w->inpos + 1] = have_in ? f2s(in[1][i]) : 0;
         float l = 0, r = 0;
         if (w->pos < DSP_BLOCK) { l = w->block[w->pos * 2] * (1.0f / 32768.0f); r = w->block[w->pos * 2 + 1] * (1.0f / 32768.0f); w->pos++; }
         if (accumulate) { out[0][i] += l; out[1][i] += r; } else { out[0][i] = l; out[1][i] = r; }
-        w->inb[2 * w->inpos] = have_in ? f2s(in[0][i]) : 0; w->inb[2 * w->inpos + 1] = have_in ? f2s(in[1][i]) : 0;
         if (++w->inpos == DSP_BLOCK) { eng_process(w, w->inb, w->block, DSP_BLOCK); w->pos = 0; w->inpos = 0; }
         i++;
     }
@@ -624,6 +698,9 @@ static void process(AEffect *e, float **in, float **out, int32_t n) { run_block(
 static void run_block(AEffect *e, float **out, int32_t n, int accumulate) {
     wrap_t *w = e->object;
     flush_pend0(e);   /* parameter 0, set since the last block (setParameter) */
+#ifdef SAMPLE_PAGE
+    page_apply(w);    /* knob, dial and preset changes from the page on the MPC Sample's screen */
+#endif
     housekeeping(e, n);
 #if SAMPLE_ACCURATE
     render_events(w, out, n, accumulate);
@@ -640,12 +717,19 @@ static void process(AEffect *e, float **in, float **out, int32_t n) { (void)in; 
  * first page's Q-Links, NRPN n sets parameter n. Set as a touch would (an option list rounds to the nearest option);
  * the host hears about it from housekeeping(), at most every 1024 frames per control, so the screen follows without a
  * flood. Returns 1 when the message was used here (it then doesn't go to the engine). */
+/* an absolute value as cc_set applies it: an option list or a whole-number range rounds to the nearest step */
+static float cc_round(const param_t *p, float n) {
+    if (p->nopts > 1) return roundf(clamp01(n) * (p->nopts - 1)) / (p->nopts - 1);
+    if (p->int_display && p->max > p->min) return roundf(clamp01(n) * (p->max - p->min)) / (p->max - p->min);
+    return n;
+}
+
 static void cc_set(wrap_t *w, int i, float n) {
     if (i < 0 || i >= NPARAMS || popup_is(i)) return;
-    const param_t *p = &PARAMS[i];
-    if (p->nopts > 1) n = roundf(clamp01(n) * (p->nopts - 1)) / (p->nopts - 1);
-    else if (p->int_display && p->max > p->min) n = roundf(clamp01(n) * (p->max - p->min)) / (p->max - p->min);
+    n = cc_round(&PARAMS[i], n);
+    absolute_set = 1;     /* NRPN's fine byte (CC 38) lands a tiny step from the coarse one (CC 6): not a wheel click */
     setParameter(&w->fx, i, n);
+    absolute_set = 0;
     w->cc_changed[i] = 1;
 }
 
@@ -667,8 +751,12 @@ static int midi_control(wrap_t *w, const uint8_t *m) {
 }
 
 static void copy_str(void *dst, const char *src, size_t max) {
-    strncpy(dst, src, max - 1);
-    ((char *)dst)[max - 1] = 0;
+    /* strncpy() reads whole words, so ASan reports a global-buffer-overflow when the
+     * source is a short option literal ("H2"). Bounded by the source length instead. */
+    size_t n = strlen(src);
+    if (n > max - 1) n = max - 1;
+    memcpy(dst, src, n);
+    ((char *)dst)[n] = 0;
 }
 
 /* ---- VST programs: MPC's PRESET menu lists them by name and loads one with effSetProgram (docs/NOTES.md) ----
@@ -730,12 +818,59 @@ static void program_name(wrap_t *w, int idx, char *out) {
 #endif
 }
 
+/* A parameter's name and value as the host shows them (effGetParamName / effGetParamDisplay, and the MPC Sample page). */
+static void param_name_text(wrap_t *w, int idx, char *out, int n) {
+    char buf[64], k2[96];
+    out[0] = 0;
+    if (idx < 0 || idx >= NPARAMS) return;
+    /* "dynamic_name" params: the DSP may rename them (e.g. a drum machine's per-machine knob
+     * labels); MPC re-reads names on audioMasterUpdateDisplay (docs/NOTES.md). */
+    snprintf(k2, sizeof k2, "%s_name", PARAMS[idx].key);
+    if (PARAMS[idx].dynamic_name && eng_get(w, k2, buf, sizeof buf) > 0) copy_str(out, buf, n);
+    else copy_str(out, PARAMS[idx].name, n);
+}
+
+static void param_value_text(wrap_t *w, int idx, char *out, int n) {
+    char buf[PARAM_TEXT_MAX > 64 ? PARAM_TEXT_MAX : 64];
+    out[0] = 0;
+    if (idx < 0 || idx >= NPARAMS) return;
+    const param_t *pp = &PARAMS[idx];
+    char k2[96];
+    snprintf(k2, sizeof k2, "%s_display", pp->key);
+    if (pp->dynamic_display && eng_get(w, k2, buf, sizeof buf) > 0) {
+        copy_str(out, buf, n);   /* text the DSP composes (e.g. a destination's own name) */
+    } else if (pp->nopts) {
+        int k = (int)lroundf(get_norm(w, idx) * (pp->nopts - 1));
+        copy_str(out, pp->opts[k], n);
+    } else if (eng_get(w, pp->key, buf, sizeof buf) > 0) {
+        if (pp->string_display) copy_str(out, buf, n);   /* real text (a name, a status), not a number */
+        else snprintf(out, n < 24 ? n : 24, "%.*f", (pp->int_display || fabs(pp->max - pp->min) > 20) ? 0 : 1, atof(buf));
+    }
+}
+
+#ifdef SAMPLE_PAGE
+#include "sample_page.h"
+#endif
+
+/* Vendor opcode answered only by the framework's own bench (tools/bench.c): 1 when parameter idx is a
+ * one-shot trigger ("momentary": true), 0 otherwise. MPC never sends it, and a plugin built before
+ * this existed returns 0 from the default branch, which the bench reads as "no triggers known". */
+#define EFF_MPC_IS_MOMENTARY 0x7F01
+
 static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void *p, float o) {
     wrap_t *w = e->object;
     (void)o;
     switch (op) {
     case effOpen: return 1;
+    case EFF_MPC_IS_MOMENTARY:
+        return (idx >= 0 && idx < NPARAMS && PARAMS[idx].momentary) ? 1 : 0;
     case effClose:
+#ifdef SAMPLE_PAGE
+        sample_page_close(w->spage);   /* first: its thread reads the engine */
+#endif
+#ifdef DISPLAY_REV_THREAD
+        if (w->rev_th_on) { w->rev_stop = 1; pthread_join(w->rev_th, NULL); }
+#endif
         g_api->destroy(w->dsp);
         pthread_mutex_destroy(&w->lock);
         free(w);
@@ -752,37 +887,26 @@ static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void
     case effGetVstVersion: return 2400;
     case effCanBeAutomated: return idx >= 0 && idx < NPARAMS;
     case effGetParamName:
-        if (idx >= 0 && idx < NPARAMS) {
-            char buf[64], k2[96];
-            /* "dynamic_name" params: the DSP may rename them (e.g. a drum machine's per-machine knob
-             * labels); MPC re-reads names on audioMasterUpdateDisplay (docs/NOTES.md). */
-            snprintf(k2, sizeof k2, "%s_name", PARAMS[idx].key);
-            if (PARAMS[idx].dynamic_name && eng_get(w, k2, buf, sizeof buf) > 0) copy_str(p, buf, 32);
-            else copy_str(p, PARAMS[idx].name, 32);
-        }
+        if (idx >= 0 && idx < NPARAMS) param_name_text(w, idx, p, 32);
         return 1;
     case effGetParamLabel:
         if (idx >= 0 && idx < NPARAMS) copy_str(p, PARAMS[idx].unit, 8);
         return 1;
-    case effGetParamDisplay: {
-        char buf[PARAM_TEXT_MAX > 64 ? PARAM_TEXT_MAX : 64];
+    case effGetParamDisplay:
         if (idx < 0 || idx >= NPARAMS) return 0;
         if (idx == 0) flush_pend0(e);
-        const param_t *pp = &PARAMS[idx];
-        char k2[96];
-        snprintf(k2, sizeof k2, "%s_display", pp->key);
-        if (pp->dynamic_display && eng_get(w, k2, buf, sizeof buf) > 0) {
-            copy_str(p, buf, PARAM_TEXT_MAX);   /* text the DSP composes (e.g. a destination's own name) */
-        } else if (pp->nopts) {
-            int k = (int)lroundf(get_norm(w, idx) * (pp->nopts - 1));
-            copy_str(p, pp->opts[k], PARAM_TEXT_MAX);
-        } else if (eng_get(w, pp->key, buf, sizeof buf) > 0) {
-            if (pp->string_display) copy_str(p, buf, PARAM_TEXT_MAX);   /* real text (a name, a status), not a number */
-            else snprintf(p, 24, "%.*f", (pp->int_display || fabs(pp->max - pp->min) > 20) ? 0 : 1, atof(buf));
-        }
+        param_value_text(w, idx, p, PARAM_TEXT_MAX);
         return 1;
-    }
+#ifdef SAMPLE_PAGE
+    case effMainsChanged:
+        /* The page opens when the host first gets the instance ready to play, not at creation: a scan or probe instance
+         * MPC makes and drops would otherwise open a page under the same name (the draw handler shows the newest). */
+        if (v && !w->spage) w->spage = sample_page_open(w);
+        return 1;
+    case effSetSampleRate: case effSetBlockSize: return 1;
+#else
     case effSetSampleRate: case effSetBlockSize: case effMainsChanged: return 1;
+#endif
     case effProcessEvents: {
         VstEvents *ev = p;
 #if SAMPLE_ACCURATE
@@ -860,6 +984,17 @@ __attribute__((visibility("default"))) AEffect *VSTPluginMain(audioMasterCallbac
     w->pos = DSP_BLOCK;
     for (int i = 0; i < NPARAMS; i++) w->last_pos[i] = w->last_norm[i] = -1;
     w->nrpn = -1;
+#ifdef DISPLAY_REV_THREAD
+    {   /* a normal-priority thread whatever the creating thread is (explicit, not inherited) */
+        pthread_attr_t ta; struct sched_param sp = {0};
+        pthread_attr_init(&ta);
+        pthread_attr_setinheritsched(&ta, PTHREAD_EXPLICIT_SCHED);
+        pthread_attr_setschedpolicy(&ta, SCHED_OTHER);
+        pthread_attr_setschedparam(&ta, &sp);
+        w->rev_th_on = pthread_create(&w->rev_th, &ta, rev_thread, w) == 0;
+        pthread_attr_destroy(&ta);
+    }
+#endif
     AEffect *e = &w->fx;
     e->magic = 0x56737450; /* 'VstP' */
     e->dispatcher = dispatcher;
@@ -881,5 +1016,8 @@ __attribute__((visibility("default"))) AEffect *VSTPluginMain(audioMasterCallbac
     e->uniqueID = PLUG_UID;
     e->version = PLUG_VERSION;
     e->object = w;
+#ifdef SAMPLE_PAGE
+    w->page_prog = -1;   /* the page itself opens at effMainsChanged, only on an MPC Sample with mpc-addin-sample-draw-handler */
+#endif
     return e;
 }

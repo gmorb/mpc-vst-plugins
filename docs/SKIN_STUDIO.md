@@ -290,7 +290,7 @@ findings as `warning: skin:` lines. It complements the browser editor's layout c
 (label widths, `when=` modes, `banks=` sub-pages).
 
 ## Text size and touch width per control (2026-10-07, offline)
-`knob` and `slider_v`/`slider_h` take `ns=<px>` (name text; `ns=0` drops the name), `vs=<px>` (value text; `vs=0` on a knob drops it, for artwork that has its own labels) and
+`knob` and `slider_v`/`slider_h` take `ns=<px>` (name text; `ns=0` drops the name), `vs=<px>` (value text; `vs=0` on a knob drops it, for artwork that has its own labels; `vy=<px>` moves a knob's value text down, to sit under such a label) and
 `bw=<px>` (touch box and text width; default 130). Narrow `bw=` where neighbours sit closer than ~130 px, or MPC gives
 a touch to the wrong control. Toggles take `bw=` and `ns=0` (the switch alone); `enum_v` takes `sh=` like `enum_h`.
 `knob ... lay=side bw= bh= vs=` puts the knob's picture at the left of a bw x bh box and its value, large, in the rest
@@ -299,3 +299,11 @@ a touch to the wrong control. Toggles take `bw=` and `ns=0` (the switch alone); 
 ## Coming next
 Tracked in [ROADMAP.md](ROADMAP.md) ("Skin controls" and "Porting and tooling"), including a build-and-preview
 button in the browser editor.
+
+## More than one interface
+
+A plugin can ship several interfaces and let the user pick one from inside it. The constraint is that MPC
+binds a skin at insert and has no reload call, and that `when=` hides widgets but never tabs — so variants
+with different navigation live in separate folders and the switch copies two small files. Recipe, engine
+contract and the measurements: [SKIN_VARIANTS.md](SKIN_VARIANTS.md). Build the folder with
+`tools/make_skinset.py`.

@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['catalog/**', 'tools/catalog_*.py', 'tools/app_*.py', 'tools/catalog_site/**', 'tools/skin_compat.py', 'tools/skin_roles_2x.json', 'tools/test_skin_compat.py']
+    paths: ['catalog/**', 'tools/catalog_*.py', 'tools/app_*.py', 'tools/catalog_site/**', 'tools/skin_compat.py', 'tools/skin_roles_2x.json', 'tools/test_skin_compat.py', 'tools/sdk_*.py', 'tools/test_sdk_*.py', 'tools/release.py', 'tools/release/**']
   pull_request:
-    paths: ['catalog/**', 'tools/catalog_*.py', 'tools/app_*.py', 'tools/catalog_site/**', 'tools/skin_compat.py', 'tools/skin_roles_2x.json', 'tools/test_skin_compat.py']
+    paths: ['catalog/**', 'tools/catalog_*.py', 'tools/app_*.py', 'tools/catalog_site/**', 'tools/skin_compat.py', 'tools/skin_roles_2x.json', 'tools/test_skin_compat.py', 'tools/sdk_*.py', 'tools/test_sdk_*.py', 'tools/release.py', 'tools/release/**']
 permissions:
-  contents: read
+  contents: write   # the sdk-converted release (converted SDK zips); everything else only reads
   issues: write
 # One run at a time per branch: two overlapping runs each opened the same issue (#112, #113).
 concurrency:
@@ -24,6 +24,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Tests
         run: python3 tools/test_catalog.py
+      - name: Install page drive writer tests
+        run: node tools/test_drivewrite.mjs
+      - name: SDK-format zip tests
+        run: python3 tools/test_sdk_zip.py && python3 tools/test_sdk_release.py
+      - name: Site downloads tests
+        run: python3 tools/test_site_downloads.py
       - name: Skin compatibility tests
         run: python3 tools/test_skin_compat.py
       - name: Validate the registry
@@ -43,6 +49,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 tools/catalog_build.py
+      - name: Host the converted SDK zips (releases that carry only an Akai SDK zip; uploaded once, never replaced)
+        # catalog_build.py converted them into per-build zips and listed this release's URLs for them; they must exist before the site goes out
+        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [ -s catalog/dist/sdk-converted.txt ] || { echo "nothing to upload"; exit 0; }
+          gh release view sdk-converted >/dev/null 2>&1 || gh release create sdk-converted --latest=false --title "Converted Akai SDK releases" \
+            --notes "Per-build zips the catalog made from plugin releases that carry only an Akai SDK-format zip (tools/sdk_release.py). Do not edit: the catalog lists these files by URL and checksum."
+          xargs -d '\n' gh release upload sdk-converted < catalog/dist/sdk-converted.txt
       - name: Resolve companion app downloads from their releases
         if: ${{ github.event_name != 'pull_request' }}
         env:
@@ -56,11 +72,19 @@ jobs:
       - name: Generate the site
         if: ${{ github.event_name != 'pull_request' }}
         run: python3 tools/catalog_site.py
+      - name: Copy the Install page's downloads into the site (pinned, catalog/downloads.json)
+        if: ${{ github.event_name != 'pull_request' }}
+        run: python3 tools/site_downloads.py
+      - name: Redirect copy for this repo's own Pages address
+        # open-mpc.github.io/mpc-vst-plugins/ (this repo's Pages) is not where users go: the site is at open-mpc.github.io/ (mirror-org).
+        # Serve the catalog files there (anything that kept the old path still reads them) and pages that redirect to the root.
+        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        run: python3 tools/catalog_mirror.py --site catalog/dist/site --out catalog/dist/repo-pages --new-base https://open-mpc.github.io/
       - name: Upload the Pages artifact
         if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
         uses: actions/upload-pages-artifact@v3
         with:
-          path: catalog/dist/site
+          path: catalog/dist/repo-pages
       - name: Upload catalog.json and problems.json
         if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v4
@@ -81,3 +105,74 @@ jobs:
     steps:
       - id: deploy
         uses: actions/deploy-pages@v4
+  mirror-org:
+    # The whole site at https://open-mpc.github.io/ (repo open-mpc/open-mpc.github.io): the address users go to, and the catalog
+    # address clients read first (docs/CATALOG.md, docs/ORG_MIGRATION.md). Needs the secret OPENMPC_PAGES_TOKEN: a fine-grained token with Contents read/write on that repo
+    # only. Skipped while the secret is missing.
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.OPENMPC_PAGES_TOKEN }}
+    steps:
+      - if: ${{ env.TOKEN != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: catalog
+          path: dist
+      - name: Push the site to open-mpc.github.io
+        if: ${{ env.TOKEN != '' }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/open-mpc/open-mpc.github.io.git" org
+          # the whole site (pages, catalog files, mpc-store.sh and its helpers): open-mpc.github.io/ is the address users go to.
+          # Everything but .git, the repo's README and worker/ (the community signals Worker's source, docs/COMMUNITY_SIGNALS.md) is
+          # replaced, so files the site no longer has are removed too.
+          [ -f dist/site/index.html ] && [ -f dist/site/catalog.json ] || { echo "no site in the artifact"; exit 1; }
+          find org -mindepth 1 -maxdepth 1 ! -name .git ! -name README.md ! -name worker -exec rm -rf {} +
+          cp -a dist/site/. org/
+          cd org
+          git add -A
+          if git diff --cached --quiet; then echo "no change"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Catalog update from ${GITHUB_REPOSITORY}@${GITHUB_SHA::7}"
+          git push -q origin HEAD:main
+  mirror:
+    # Keeps the OLD catalog address answering after the repo has moved to another owner (docs/ORG_MIGRATION.md, step 2), by committing a
+    # copy of the data files and redirect pages to a repo that hosts it (a user-site repo such as sd88me/sd88me.github.io). Does nothing
+    # until the repository variable CATALOG_MIRROR_REPO is set. One-time setup by the repo owner:
+    #   - a deploy key WITH write access on that repo, its private half in the secret MIRROR_DEPLOY_KEY (no account-wide token)
+    #   - variables: CATALOG_MIRROR_REPO (owner/name), optional CATALOG_MIRROR_DIR (folder in it, default: this repo's name)
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.CATALOG_MIRROR_REPO != '' }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: catalog-mirror
+      cancel-in-progress: false
+    env:
+      MIRROR_DIR: ${{ vars.CATALOG_MIRROR_DIR || github.event.repository.name }}
+      NEW_BASE: ${{ vars.CATALOG_NEW_BASE || 'https://open-mpc.github.io/' }}   # where the redirect pages send people (the address users go to)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: tools-src
+      - uses: actions/download-artifact@v4
+        with:
+          name: catalog
+          path: dist
+      - name: Check out the repo that hosts the old address
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.CATALOG_MIRROR_REPO }}
+          ssh-key: ${{ secrets.MIRROR_DEPLOY_KEY }}
+          path: mirror
+      - name: Build the copy
+        run: python3 tools-src/tools/catalog_mirror.py --site dist/site --out "mirror/$MIRROR_DIR" --new-base "$NEW_BASE"
+      - name: Commit and push if it changed
+        working-directory: mirror
+        run: |
+          git add -A -- "$MIRROR_DIR"
+          git diff --cached --quiet && { echo "mirror is up to date"; exit 0; }
+          git -c user.name='catalog mirror' -c user.email='noreply@github.com' commit -q -m "Mirror the catalog from $GITHUB_REPOSITORY@${GITHUB_SHA::7}"
+          git push

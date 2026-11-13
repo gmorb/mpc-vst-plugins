@@ -3,7 +3,7 @@
 A release is **one zip per CPU** people can share around: `<Name>-<version>-mpc-armv7.zip` (Gen1 MPC and Force) and, for a port that
 lists `"targets": ["armv7", "aarch64"]`, `<Name>-<version>-mpc-aarch64.zip` (Gen2, docs/GEN2.md). Run `release.py` once per `.so`
 (`build/x.so` and `build/aarch64/x.so`) with the same arguments and attach both zips to the same release. Each zip unpacks to a folder with
-the plugin as one folder (`portable/<skin>/`: the `.so`, the skin, its data and a `plugin-meta.xml`), `install.sh` /
+the plugin as one folder (`portable/<skin>/`: the `.so`, the skin, its data, a `plugin-meta.xml` and a `plugin.json` for MPC OS 3.10.1's `VST2 Plugins` folder: copy the folder there and it is listed, no installer needed), `install.sh` /
 `uninstall.sh` and a generated `INSTALL.md` (scripted and manual steps, requirements, CPU result, checksums). The folder is
 the only layout: it can be dropped into any `Synths` folder by other installers too (`docs/CATALOG_SPEC.md`, "Plugin folder").
 
@@ -28,7 +28,9 @@ An addin (a library MPC preloads) is released with `tools/release_addin.py`, or 
    (`docs/CATALOG_SPEC.md`), then check it: `tools/catalog_check.py dist/<zip> --catalog`.
    `--extra SRC:DEST` ships extra runtime files in the plugin folder, next to the `.so` (an engine bundle, presets; `DEST` is
    relative to the plugin folder, a leading `vst/` from older scripts is still accepted). `--user-data <folder>` marks a folder
-   where the user adds files (ROMs, kits, banks); the installer keeps it.
+   where the user adds files (ROMs, kits, banks); the installer keeps it. `--folder-name <name>` names the plugin folder (and the zip)
+   when it differs from the plugin-list name, e.g. Monomodule's `Monomodule One` folder for the list name `Monomodule`; keep it the same
+   across versions so upgrades find the user's data.
 7. **Publish**: tag `<port>-vX.Y.Z` in the port's repo and attach the zip:
    `gh release create maze-voice-vst-v1.2.0 dist/Maze-Voice-1.2.0-mpc-armv7.zip [dist/Maze-Voice-1.2.0-mpc-aarch64.zip] --notes-file ...`
    Paste the zip's INSTALL.md "Requirements" and "Install" sections into the notes.
@@ -42,12 +44,45 @@ you do to the draft's zip before publishing it, so the zip you tested is the zip
 If the port's build also leaves `build/aarch64/<so>` (vst.json `targets`), the workflow packages and attaches the `-mpc-aarch64.zip` (Gen2) too;
 the CPU result is Gen1's, so that zip has none. Offline only until run on a Gen2 device (docs/GEN2.md).
 
+A port with only a Gen2 build (no 32-bit `.so`) passes `gen2_only: true`: the workflow then packages only `build/aarch64/<so>` as the `-mpc-aarch64.zip`
+(the default, false, is unchanged for every other port).
+
+**An Akai SDK project** passes `sdk_project: <folder with plugin.json and src/>` instead of `vst_dir` and `build` (2026-11-13, offline:
+the step run locally on SimpleSynth). The workflow builds it for both CPUs with the SDK pinned in this repo
+(`vendor/mpc-plugin-builder-sdk`, `tools/build.py`, zig downloads itself), packages it with `tools/sdk_release.py` (same per-build zips,
+3.9.1 registration included) and adds the SDK zip. A CPU result goes in `<sdk_project>/bench.txt`; the other inputs (`plugin_id`,
+`license`, `about`, `user_data` ...) work as for any port. Skin previews are skipped for SDK skins (our previewer reads our format). A
+whole caller:
+
+```yaml
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version: { required: true }
+      dry_run: { type: boolean, default: true }
+jobs:
+  release:
+    uses: open-mpc/mpc-vst-plugins/.github/workflows/vst-release.yml@<sha>
+    permissions: { contents: write }
+    with:
+      tools_ref: <sha>
+      tag: my-synth-v${{ inputs.version }}
+      version: ${{ inputs.version }}
+      sdk_project: plugins/MySynth
+      plugin_id: my-synth
+      license: MIT
+      dry_run: ${{ inputs.dry_run }}
+```
+
+The Plugin Manager lives in its own repo since 2026-11 ([open-mpc/plugin-manager](https://github.com/open-mpc/plugin-manager)) and calls this workflow like any port (`asset_name: Plugin-Manager-G2`, `retire: OpenMPC - VST - Plugin Manager G2`). Its registry entry lists `previous_repos: [open-mpc/mpc-vst-plugins]`, where its releases up to 1.1.0 stay.
+
 A port calls it from its own repo with a `workflow_dispatch` workflow that takes the version. Pin this repo to one
 commit in both places:
 ```yaml
 jobs:
   vst:
-    uses: sd88me/mpc-vst-plugins/.github/workflows/vst-release.yml@<sha>
+    uses: open-mpc/mpc-vst-plugins/.github/workflows/vst-release.yml@<sha>
     permissions: { contents: write }
     with:
       tag: my-port-vst-v${{ inputs.version }}
@@ -113,3 +148,44 @@ starts MPC once (`-n`: the caller does, as for `install.sh -n`). `--dry-run` pri
 MockbaMod's `vstscanner.sh` (`/media/*/Synths/*/plugin-meta.xml`) but not its whole-list rebuild, so entries from other tools survive.
 It is not shipped in the release zips yet; the device-side store script (docs/CATALOG.md, Phase 4) will call it after a batch of
 `install.sh -y -n`. Only the first `<PLUGIN>` in a `plugin-meta.xml` is read (the packages `release.py` builds have one).
+
+## Folder-only zips for MPC OS 3.10.1 (2026-11-02)
+`tools/folder_zip.py <release zip> <out zip>` writes a zip whose only entry is the plugin folder from `portable/` (it must contain
+`plugin.json`). Users on 3.10.1 unzip it and copy the folder into `VST2 Plugins`. The Plugin Manager release carries
+`OpenMPC-Plugin-Manager-<ver>-Gen1.zip` / `-Gen2.zip` made this way, next to the normal zips. Tests: `tools/test_folder_zip.py`.
+
+**SDK-format zip (Akai's plugin folder, 2026-11-03, offline; not yet loaded on a device).** The reusable release workflow
+(`vst-release.yml`) also attaches `<Name>-<ver>-mpc-sdk.zip`, made by `tools/sdk_zip.py OUT.zip <armv7 zip> [<aarch64 zip>]`: one
+folder for every MPC, `plugin.json` with both `file32` and `file64`. The binaries are `<slug>-arm32.so` / `<slug>-arm64.so` at the
+folder root, not in the SDK's `VST/` subfolder (allowed: `plugin.json` gives the path), because our plugins take their own folder
+to be the directory of their `.so` (`wrapper/plugin_dir.h`, the Plugin Manager's themes). `plugin-meta.xml` (3.9.1 registration, naming the old `.so` name) is left out, since the SDK zip is for 3.10.1+. `mpc-plugin.json` is kept with
+`"arch": "universal"` and each build's `max_glibc` under `builds`. A plugin whose other files differ between builds gets no SDK zip
+(a notice, not a failure). The catalog, the Plugin Manager and the installers keep using the per-build zips (`*-mpc-armv7.zip`
+does not match the SDK zip's name). Tests: `tools/test_sdk_zip.py`. The Plugin Manager release has one too (from 1.1.1). The Install page writes these to a stick from the catalog site: after uploading them, set their SHA-256 (and the tag, if it changed) in `catalog/downloads.json` (docs/CATALOG.md).
+
+## From an Akai SDK build: `tools/sdk_release.py` (2026-11-13, offline)
+`tools/sdk_release.py "<Manufacturer> - VST - <Name>" --version X --id ID --repo owner/name [--license L]` (a folder made by the SDK's
+`tools/build.py`, or its zip) writes the per-build zips the catalog, the Plugin Manager, the installers and the sticks install: one per
+binary named in plugin.json (`file32` -> armv7, `file64` -> aarch64), each holding the whole folder with only its own binary, still at
+the SDK's path (`VST/<slug>-arm32.so`). The SDK finds its folder by walking up from the .so to plugin.json, so `Content/` is found on
+3.9.1 too. The 3.9.1 plugin-list entry comes from plugin.json (a four-character uid such as "MxSy" becomes 4d785379). It runs
+`release.py --so-path`, so every check and the install scripts are the usual ones; `tools/sdk_zip.py` then joins the zips back into
+the SDK zip with the same paths. A plugin without `Plugin Skins/TUI.json` and `version.xml` is refused. Extra options (`--bench`,
+`--user-data` ...) go on to release.py. Tests: `tools/test_sdk_release.py`. In CI: `vst-release.yml` with `sdk_project` ("Releasing from CI"). A release with only the SDK zip is converted by the catalog itself (docs/CATALOG.md).
+
+## Renaming a plugin (2026-11-13)
+On MPC OS 3.10.1 a plugin's folder must be `<maker> - VST - <name>`, so a new name is a new folder. Release it with the reusable
+workflow's `retire` input (`'Maker - VST - Old Name'`, several separated by `|`, passed to `release.py --retire`): the zip's
+`install.sh` then removes the old folder when it holds this plugin's id and moves its `user_data` in. Keep the uid, so saved projects
+and MPC.settings entries stay with the plugin; keep the catalog id and the release asset names. Move (the Plugin Manager's and the
+installer's) skips a Synths folder whose uid already has a folder in `VST2 Plugins`, so the old copy isn't copied back.
+First use: the Plugin Manager, "Plugin Manager G2" -> "Plugin Manager" in 1.1.0 (it also removes a hand-copied old folder of itself
+at start). Its asset names stay `Plugin-Manager-G2-*` because installer 2.0.0 checks stick bundles by that name.
+
+
+## Plugin Manager releases: the rest after CI (`tools/pm_release.py`)
+After "Run workflow" on the Plugin Manager's workflow (open-mpc/plugin-manager, dry_run off) has made the draft (start it after main's own run on that commit has passed: the release reuses it, else the tests run again):
+`tools/pm_release.py <version> --firmware <3.9.1 update.img>` makes the Gen1/Gen2 folder zips and attaches them, builds the 3.9.1
+stick and makes its draft. Check on a device, then `--publish` publishes both (neither becomes "Latest"), and `--pins` opens the PR
+that moves catalog/downloads.json, tools/desktop/g2stick-pin.json, the Install page and the site guide to the new version (the pinned
+URLs must answer 200 first). A person merges the pins PR: installers read the stick pin live from main. Test: tools/test_pm_release.py.

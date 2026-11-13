@@ -88,14 +88,14 @@ class Scan(unittest.TestCase):
 class Stick(unittest.TestCase):
     def test_layout_and_check(self):
         with tempfile.TemporaryDirectory() as d:
-            out = make_stick.build(Path(d) / "stick", SALT, ROOT / "mpc-store.sh", ["plugin-manager", "acid"])
+            out = make_stick.build(Path(d) / "stick", SALT, ROOT / "mpc-store.sh", ["plugin-manager-g2", "acid"])
             a = out / "autorun"
             m = json.loads((a / "autorun.json").read_text())["value0"]
             self.assertEqual(m["files"], ["runtime/mpc-store.sh", "runtime/run.sh"])
             self.assertEqual(m["scripts"][0]["path"], "open.sh")
             want = hashlib.sha256(b"".join((a / n).read_bytes() for n in ["autorun.json", "open.sh"] + m["files"]) + SALT).hexdigest()
             self.assertEqual((a / "autorun.check").read_text(), want)
-            self.assertEqual((out / "install.txt").read_text().split("\n")[1:3], ["plugin-manager", "acid"])
+            self.assertEqual((out / "install.txt").read_text().split("\n")[1:3], ["plugin-manager-g2", "acid"])
             with self.assertRaises(FileExistsError):
                 make_stick.build(out, SALT, ROOT / "mpc-store.sh", [])
 
@@ -193,13 +193,13 @@ class RunScript(unittest.TestCase):
     def test_default_is_the_plugin_manager(self):
         rc, res, backup, left = self.run_it(None)
         self.assertEqual(rc, 0)
-        self.assertIn("store args: -y install plugin-manager", res)
+        self.assertIn("store args: -y install plugin-manager-g2", res)
         self.assertTrue(backup)
         self.assertFalse(left)
 
     def test_ids_from_install_txt_and_junk_ignored(self):
-        rc, res, *_ = self.run_it("# comment\nacid  \n$(rm -rf x)\nplugin-manager # trailing\n; ls\n")
-        self.assertIn("store args: -y install acid plugin-manager", res)
+        rc, res, *_ = self.run_it("# comment\nacid  \n$(rm -rf x)\nplugin-manager-g2 # trailing\n; ls\n")
+        self.assertIn("store args: -y install acid plugin-manager-g2", res)
         self.assertNotIn("rm -rf", res.split("store args")[1])
 
     def test_failure_is_reported_and_status_kept(self):
@@ -275,7 +275,7 @@ class RunScript(unittest.TestCase):
             res = (usb / "mpc-install-result.txt").read_text()
             self.assertEqual(r.returncode, 0)
             self.assertIn("warning: reapplying addin broken failed (status 1)", res)
-            self.assertIn("store args: -y install plugin-manager", res)
+            self.assertIn("store args: -y install plugin-manager-g2", res)
 
     def test_ssh_is_enabled_before_the_addin_reapply_and_catalog_install(self):
         with tempfile.TemporaryDirectory() as d:
@@ -324,6 +324,29 @@ class RunScript(unittest.TestCase):
             res = (usb / "mpc-install-result.txt").read_text()
             self.assertEqual(r.returncode, 0)
             self.assertNotIn("Enabling SSH", res)
+
+    def test_on_demand_sshd_goes_in_its_own_unit_even_when_stopping_a_missing_unit_fails(self):
+        # The last block of enable_ssh.sh (the read-only-root branch) under `sh -e`, as on a device where `systemctl stop` of a unit that does
+        # not exist yet exits 5. Found on a Live III 2026-10-27: that exit aborted the script before sshd was started.
+        text = (ROOT / "usb_stick" / "enable_ssh.sh").read_text()
+        start = text.index("    if command -v systemd-run")
+        end = text.index("\n    fi\n", start) + len("\n    fi\n")
+        block = text[start:end]
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            bin_ = d / "bin"; bin_.mkdir()
+            (bin_ / "systemctl").write_text("#!/bin/sh\nexit 5\n")
+            (bin_ / "systemd-run").write_text(f'#!/bin/sh\necho "systemd-run $*" >> "{d}/calls"\n')
+            (bin_ / "sshd").write_text(f'#!/bin/sh\necho "sshd $*" >> "{d}/calls"\n')
+            for f in bin_.iterdir():
+                f.chmod(0o755)
+            script = f'HK="-h /k"; AUTHOPTS="-o X=y"; set -e\n{block.replace("/usr/sbin/sshd", str(bin_ / "sshd"))}\necho reached-the-end\n'
+            r = subprocess.run(["sh", "-c", script], env=dict(os.environ, PATH=f"{bin_}:{os.environ['PATH']}"), capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("reached-the-end", r.stdout)
+            calls = (d / "calls").read_text()
+            self.assertIn("systemd-run --unit=mpc-usb-sshd --collect", calls)
+            self.assertIn(" -D ", calls)
 
 
 if __name__ == "__main__":

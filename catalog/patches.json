@@ -4,35 +4,18 @@
     {
       "id": "drum-pad-layout",
       "title": "16-pad drum layout for selected plugins",
-      "summary": "Machinedrum Module / Machinemodule, 6W6, 8W8, CW-78, 9W9, TR-MPC and Lucky Dip get MPC's drum layout with all 16 pads lit.",
+      "summary": "Machinedrum Module / Machinemodule, 6W6, 8W8, CW-78, 9W9, TR-MPC and Lucky Dip get MPC's drum layout with all 16 pads lit. On Gen2 (Live III) it runs a patched copy of MPC instead of changing the system.",
       "author": "sd88me",
       "license": "MIT",
       "docs": "tools/mpc_patch/README.md",
       "script": {
-        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/6ddf68cf92b3f1c0bdd322231ed133c0cc2eed48/tools/mpc_patch/mpc-drum-pad-patch.sh",
-        "sha256": "ec69edaaf5b1ce57d3937d2ec967d34bd5257d5faa15d1520b8cb51422dfefe7"
+        "url": "https://raw.githubusercontent.com/open-mpc/mpc-vst-plugins/70220abfad5998fa5ad8b19f4db9bae22b936200/tools/mpc_patch/mpc-drum-pad-patch.sh",
+        "sha256": "85eab38f16afa29585d9ed677a62cfe94b5977511ac3062a279201a1fedbffa7"
       },
-      "supports": {"os": "MPC OS 3.9.1.2", "arch": "armv7l", "mpc_md5": ["592eebc8e1ce0797dc8c98e7002143b8"]},
+      "supports": {"os": "MPC OS 3.9.1.2 (Force); Gen1 MPC OS 3.10.0; Gen2 (aarch64) MPC OS 3.9.1, 3.10.0 and 3.10.1", "arch": "armv7l,aarch64", "mpc_md5": ["592eebc8e1ce0797dc8c98e7002143b8", "a7ace6a9993df33afeae50571755bbf9", "15a664f6b6ae591c8b78baae8b376f02", "b6cc8e7a398bdf6c3fd8f7176eecd3ee", "4280be032878fc321b7f58a6801cb1ea"]},
       "modifies": ["/usr/bin/MPC"],
       "backup": "/sdcard/MPC-backup",
       "restarts_mpc": true,
-      "reversible": true
-    },
-    {
-      "id": "drive-exec",
-      "title": "Drive exec: run plugins from a noexec drive (an MPC/Force's SSD)",
-      "summary": "Replaced by Auto exec (use that instead; this one is kept so it can still be uninstalled). UNTESTED on a device by this project. MPC cannot load a plugin from a drive mounted noexec: it is listed but only shows Load Plugin. This makes one folder of the drive (Synths) executable, through a small boot-time service; the drive itself stays noexec.",
-      "author": "timomacquis (adapted by sd88me)",
-      "license": "MIT",
-      "docs": "tools/mpc_patch/drive_exec/README.md",
-      "script": {
-        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/f036a8791daff1ccf426c3953e84a8942c979564/tools/mpc_patch/drive_exec/drive-exec-patch.sh",
-        "sha256": "500b5ccdfbc4b735a810e747d03c4bab38dec279dff31b682a89a905970d0594"
-      },
-      "supports": {"os": "MPC OS Gen1 (tried on a Force, MPC OS 3.9.1)", "arch": "armv7l"},
-      "modifies": ["/etc/drive-exec", "/etc/systemd/system/drive-exec.timer", "/usr/lib/systemd/system/drive-exec-bootstrap.service", "/media/<your drive>/Synths (an executable bind mount of the folder)"],
-      "backup": "/data/mpc-vst-plugins/backups",
-      "restarts_mpc": false,
       "reversible": true
     },
     {
@@ -43,7 +26,7 @@
       "license": "MIT",
       "docs": "tools/mpc_patch/auto_exec/README.md",
       "script": {
-        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/40df2587d906cd44d064597472e7ae0ee92ed94a/tools/mpc_patch/auto_exec/auto-exec-patch.sh",
+        "url": "https://raw.githubusercontent.com/open-mpc/mpc-vst-plugins/40df2587d906cd44d064597472e7ae0ee92ed94a/tools/mpc_patch/auto_exec/auto-exec-patch.sh",
         "sha256": "8302f19dac337c98408c0f92867fb3a67fe494fa7cb58a91d347a30f128e6421"
       },
       "supports": {"os": "MPC OS Gen1 (mount probe on a Force, 2026-10-14)", "arch": "armv7l"},
@@ -60,12 +43,85 @@
       "license": "MIT",
       "docs": "tools/mpc_patch/hwremap/README.md",
       "script": {
-        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/a9bb8c71ba382fa6c3902fbbdead6d5f620222a5/tools/mpc_patch/hwremap/hwremap-patch.sh",
+        "url": "https://raw.githubusercontent.com/open-mpc/mpc-vst-plugins/a9bb8c71ba382fa6c3902fbbdead6d5f620222a5/tools/mpc_patch/hwremap/hwremap-patch.sh",
         "sha256": "f76393d43a5871a77f13f369a214aafadbbe40e1bfe8eb12ebfe6f252693f293"
       },
       "supports": {"os": "MPC OS 3.9 (MPC Live with Hakai, and Force stock 3.9.0, as tried by the remap's author)", "arch": "armv7l"},
       "modifies": ["/usr/bin/az01-launch-MPC", "/usr/lib/hwremap.so", "/data/hwremap/hwremap.so", "/etc/systemd/system/acvs.service.d/hwremap.conf", "/etc/systemd/system/inmusic-mpc.service.d/hwremap.conf", "/sdcard/hwremap.conf"],
       "backup": "/data/mpc-vst-plugins/backups",
+      "restarts_mpc": true,
+      "reversible": true
+    },
+    {
+      "id": "addin-restore",
+      "title": "MPC Add-Ins patch for 3.10: restore addins after a reboot",
+      "summary": "On MPC OS 3.10 (Gen2), addins load through a systemd drop-in in /run (tmpfs) that is lost after every reboot. This patch installs a Lua device script on the persistent content drive that MPC runs at every start. If addins in /data/mpc-addins are not loaded, it writes the /run drop-in and restarts MPC once. The user sees one automatic restart after a reboot; after that, all addins work. Does not modify the system image. Tested on a Live III (MPC OS 3.10, 2026-11-03): survives a full reboot, five addins restored.",
+      "author": "sd88me",
+      "license": "MIT",
+      "docs": "tools/mpc_patch/addin_restore/README.md",
+      "script": {
+        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/c5a1a5e42eef0f6b561d14f11f96cf0d16c6fc95/tools/mpc_patch/addin_restore/addin-restore-patch.sh",
+        "sha256": "e412105d511cadae08d97fd13d0ed2c5a18faa8194cbafb7496a5050e434f19b"
+      },
+      "supports": {"os": "MPC OS 3.10 Gen2 (tested on Live III, 2026-11-03)", "arch": "aarch64"},
+      "modifies": ["/nvme/MPC Documents/Devices/Addin Restore/addin_restore.ini", "/nvme/MPC Documents/Devices/Addin Restore/addin_restore.lua", "/nvme/MPC Documents/Devices/Addin Restore/addin_restore.so", "/sdcard/MPC Documents/Devices/Addin Restore/addin_restore.ini", "/sdcard/MPC Documents/Devices/Addin Restore/addin_restore.lua", "/sdcard/MPC Documents/Devices/Addin Restore/addin_restore.so"],
+      "backup": "none (files are new, nothing overwritten)",
+      "restarts_mpc": false,
+      "reversible": true
+    },
+    {
+      "id": "retrolooper-mpc-controls",
+      "title": "Retrolooper Controls for MPC 3.10.0.49",
+      "summary": "Experimental, optional track and pad integration for Retrolooper One, including Audio track timeline bounce.",
+      "tier": "experimental",
+      "requires": "MPC One+ 3.10.0.49 (modified host) on ARMv7 (host build bc141062ea5ea5be619d98366f423c8102574365)",
+      "author": "Retroloop USA / IAMTHEBAND LLC",
+      "license": "GPL-3.0-only",
+      "docs": "docs/retrolooper-controls-mpc.md",
+      "script": {
+        "sha256": "49eef0dfde51fac46cf7b678111be0fcc93c7d75bdac1a5c5b6b2b45f8637207",
+        "url": "https://raw.githubusercontent.com/asearan/Retrolooper-One-MPC-Force/c2ad478c48002949af1b9047eecf2b60efbb3f74/device-patches/retrolooper-mpc-controls-0.2.13.sh"
+      },
+      "supports": {
+        "os": "MPC One+ 3.10.0.49 (modified host); host build bc141062ea5ea5be619d98366f423c8102574365",
+        "arch": "armv7l",
+        "mpc_md5": [
+          "b6cc8e7a398bdf6c3fd8f7176eecd3ee"
+        ]
+      },
+      "modifies": [
+        "/data/mpc-addins/retrolooper-buttons/retrolooper_buttons.so",
+        "/etc/systemd/system/acvs.service.d/90-mpc-addins.conf"
+      ],
+      "backup": "/data/retrolooper-controls/backups/retrolooper-buttons",
+      "restarts_mpc": true,
+      "reversible": true
+    },
+    {
+      "id": "retrolooper-force-controls",
+      "title": "Retrolooper Controls for Force 3.10",
+      "summary": "Experimental, optional track and pad integration for Retrolooper One, including Matrix clip bounce.",
+      "tier": "experimental",
+      "requires": "Akai Force 3.10 (verified host image) on ARMv7 (host build 154ae9752e0f3c6490912a703b0dfe4b668b343d)",
+      "author": "Retroloop USA / IAMTHEBAND LLC",
+      "license": "GPL-3.0-only",
+      "docs": "docs/retrolooper-controls-force.md",
+      "script": {
+        "sha256": "60489f5d77f858c87a8f5f8a6bf77cc3a0cbc7c06ddfb8fa363ca24b8341d287",
+        "url": "https://raw.githubusercontent.com/asearan/Retrolooper-One-MPC-Force/c2ad478c48002949af1b9047eecf2b60efbb3f74/device-patches/retrolooper-force-controls-0.2.10.sh"
+      },
+      "supports": {
+        "os": "Akai Force 3.10 (verified host image); host build 154ae9752e0f3c6490912a703b0dfe4b668b343d",
+        "arch": "armv7l",
+        "mpc_md5": [
+          "a282a259d094223b7f7c7d74c1c6f1fb"
+        ]
+      },
+      "modifies": [
+        "/data/mpc-addins/retrolooper-force-controls/retrolooper_force_controls.so",
+        "/etc/systemd/system/acvs.service.d/90-mpc-addins.conf"
+      ],
+      "backup": "/data/retrolooper-controls/backups/retrolooper-force-controls",
       "restarts_mpc": true,
       "reversible": true
     }

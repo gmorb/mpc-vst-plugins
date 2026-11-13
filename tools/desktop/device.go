@@ -22,9 +22,12 @@ type Config struct {
 	User         string // "root"
 	RemoteTmp    string // where packages are unpacked on the device, "/tmp"
 	SynthsDir    string // "/sdcard/Synths": the internal drive, the default place to install
-	SynthsAlt    string // the internal drive on a device where SynthsDir is absent (Gen2/Live III: "/nvme/Synths"); promoted to primary when found and SynthsDir is not
+	SynthsAlt    string // the internal drive on a device where SynthsDir is absent, shell words in order of preference (Gen2: "/nvme/Synths" on a Live III, "/storage/Synths" on a loopback-storage unit such as the MPC One and Key 37); the first one found is promoted to primary when SynthsDir is not
 	DriveGlob    string // drives that can be given a Synths folder (so RootGlobs finds them): "/media/*"
 	RootGlobs    string // where to look for plugin locations, shell words (globs allowed): "/sdcard/Synths /media/*/Synths"
+	ModelFile    string // the device's model name ("/proc/device-tree/model")
+	MPCBin       string // MPC's program, which carries its version text ("3.10.1.6 (69e2df86f00)")
+	VST2Globs    string // drives that may hold a "VST2 Plugins" folder (MPC OS 3.10.1+), shell words: "/nvme /media/*"
 	SettingsGlob string // where MPC.settings is
 	MountsFile   string // the list of mounts, "/proc/mounts"
 	AddinsDir    string // where addins live, one folder each: "/data/mpc-addins"
@@ -32,11 +35,22 @@ type Config struct {
 }
 
 func defaultConfig() Config {
-	// Gen2 (aarch64, MPC OS 3.x; e.g. the Live III): /sdcard isn't mounted and /synths is read-only, so the writable
-	// internal drive is /nvme/Synths. The extra /nvme entries are harmless on Gen1/Force (no /nvme); SettingsGlob already
-	// finds /data. SynthsAlt (/nvme/Synths) is promoted to the primary "internal drive" when /sdcard is absent (see readInfo).
-	return Config{Port: "22", User: "root", RemoteTmp: "/tmp", SynthsDir: "/sdcard/Synths", SynthsAlt: "/nvme/Synths", RootGlobs: "/sdcard/Synths /nvme/Synths /media/*/Synths", DriveGlob: "/media/* /nvme", MountsFile: "/proc/mounts", SettingsGlob: "/media/az01-internal/Settings/*/MPC.settings /data/Settings/*/MPC.settings", AddinsDir: "/data/mpc-addins",
+	// Gen2 (aarch64, MPC OS 3.x): /sdcard isn't mounted and /synths is read-only or nearly full, so the writable internal
+	// drive is /nvme/Synths on a Live III (NVMe fitted) and /storage/Synths on a unit with loopback user storage (an MPC
+	// One, a Key 37; the firmware mounts /nvme or /storage from device tree flags). The extra entries are harmless on
+	// Gen1/Force (neither exists); SettingsGlob already finds /data. The first SynthsAlt found is promoted to the primary
+	// "internal drive" when /sdcard is absent (see readInfo).
+	return Config{Port: "22", User: "root", RemoteTmp: "/tmp", SynthsDir: "/sdcard/Synths", SynthsAlt: "/nvme/Synths /storage/Synths", RootGlobs: "/sdcard/Synths /nvme/Synths /storage/Synths /media/*/Synths", VST2Globs: "/sdcard /nvme /storage /media/*", ModelFile: "/proc/device-tree/model", MPCBin: "/usr/bin/MPC", DriveGlob: "/media/* /nvme /storage", MountsFile: "/proc/mounts", SettingsGlob: "/media/az01-internal/Settings/*/MPC.settings /data/Settings/*/MPC.settings /data/Settings/*/MPC?Sample/MPC?Sample.settings", AddinsDir: "/data/mpc-addins",
 		LibcPaths: "/lib/libc.so.6 /lib/arm-linux-gnueabihf/libc.so.6 /usr/lib/libc.so.6 /lib/libc-*.so /usr/lib/libc-*.so"}
+}
+
+// Device is the catalog's id for this device when an entry can be limited to it (registry "devices"): "mpc-sample" for the MPC Sample
+// (its settings file is "MPC Sample.settings"), "" for any other MPC.
+func (i DeviceInfo) Device() string {
+	if strings.Contains(i.Settings, "MPC Sample") {
+		return "mpc-sample"
+	}
+	return ""
 }
 
 type DeviceInfo struct {
@@ -57,6 +71,22 @@ type DeviceInfo struct {
 	Plugins     []DevPlugin                  `json:"-"`
 	Addins      []DevAddin                   `json:"-"`
 	Stores      map[string]map[string]string `json:"-"` // root path -> plugin id -> recorded version
+	// MPC OS 3.10.1+ (its VST2 Support setting): "" no such setting (older MPC OS), "off", "on"
+	VST2        string   `json:"vst2"`
+	VST2Dirs    []string `json:"vst2Dirs"`    // "<drive>/VST2 Plugins" folders that exist
+	LegacyCount int      `json:"legacyCount"` // plugin folders in a Synths location with no copy in any VST2 Plugins folder
+	Model       string   `json:"model"`       // "MPC Live III" (the device tree's model, maker dropped), "" unknown
+	MPCOS       string   `json:"mpcOS"`       // "3.10.1", "" unknown
+	Manager     string   `json:"manager"`     // the Plugin Manager's installed version, "" not installed
+}
+
+// vst2Globs turns drive globs into their "VST2 Plugins" folders as shell words ("/media/*" -> "/media/*/VST2\ Plugins").
+func vst2Globs(drives string) string {
+	var out []string
+	for _, g := range strings.Fields(drives) {
+		out = append(out, g+`/VST2\ Plugins`)
+	}
+	return strings.Join(out, " ")
 }
 
 // Root is a Synths folder MPC can load plugins from. Only writable ones are listed; the same storage reached by two paths
@@ -158,10 +188,22 @@ var (
 	keepaliveMaxFails = 2
 )
 
+// keepaliveSettings is a snapshot of the three vars above, taken by Dial on its own goroutine and handed to the keepalive
+// goroutine by value: that goroutine never reads the package vars, so a test that changes them cannot race with a keepalive
+// left running by an earlier test.
+type keepaliveSettings struct {
+	interval, timeout time.Duration
+	maxFails          int
+}
+
+func currentKeepalive() keepaliveSettings {
+	return keepaliveSettings{keepaliveInterval, keepaliveTimeout, keepaliveMaxFails}
+}
+
 // keepalive runs until Close(). Each tick it asks the current connection for a reply; if several pings in a row get no
 // reply, the transport is treated as dead and closed so a stuck Run returns (the next Run reconnects on its own).
-func (d *Device) keepalive() {
-	t := time.NewTicker(keepaliveInterval)
+func (d *Device) keepalive(k keepaliveSettings) {
+	t := time.NewTicker(k.interval)
 	defer t.Stop()
 	fails := 0
 	for {
@@ -178,13 +220,13 @@ func (d *Device) keepalive() {
 			var err error
 			select {
 			case err = <-res:
-			case <-time.After(keepaliveTimeout):
+			case <-time.After(k.timeout):
 				err = errors.New("keepalive timed out")
 			case <-d.done:
 				return
 			}
 			if err != nil {
-				if fails++; fails >= keepaliveMaxFails {
+				if fails++; fails >= k.maxFails {
 					c.Close() // unblocks any in-flight Run on this client; its next Run reconnects
 					fails = 0
 				}
@@ -255,7 +297,7 @@ func Dial(host, password string, cfg Config) (*Device, error) {
 		c.Close()
 		return nil, err
 	}
-	go d.keepalive()
+	go d.keepalive(currentKeepalive())
 	return d, nil
 }
 
@@ -382,7 +424,7 @@ func (d *Device) readInfo(host, fp string) error {
 TAB=$(printf '\t')
 echo "arch=$(uname -m)"; echo "uid=$(id -u)"; echo "synths=$S"
 echo "settings=$(ls %s 2>/dev/null | head -n 1)"
-echo "tmpfree=$(df -k %s 2>/dev/null | awk 'NR==2 {print $4}')"
+echo "tmpfree=$(df -kP %s 2>/dev/null | awk 'NR==2 {print $4}')"
 command -v tar >/dev/null 2>&1 && echo tar=1
 command -v systemctl >/dev/null 2>&1 && echo systemctl=1
 libc=""
@@ -430,12 +472,33 @@ done
 SET=$(ls %s 2>/dev/null | head -n 1)
 if [ -n "$SET" ]; then sed -n 's/.*<Location>\(.*\)<\/Location>.*/loc=\1/p' "$SET"; fi
 mval() { sed -n "s/^$1=//p" "$2" | head -n 1 | sed -e 's/^"\([^"]*\)".*/\1/;t' -e "s/^'\\([^']*\\)'.*/\\1/;t" -e 's/[[:space:]]*#.*//'; }
+V=$(ls %s 2>/dev/null | head -n 1)
+if [ -n "$V" ]; then
+  if grep -q 'Enhancements.VST2Support" val="1"' "$V"; then echo vst2=on; elif grep -q 'Enhancements.VST2Support"' "$V"; then echo vst2=off; fi
+fi
+for v in %s; do   # VST2 Plugins folders (MPC OS 3.10.1+) and the plugin folders in them
+  [ -d "$v/VST2 Plugins" ] || continue
+  printf 'vst2dir=%%s\n' "$v/VST2 Plugins"
+  for d in "$v/VST2 Plugins"/*/; do
+    [ -d "$d" ] || continue
+    printf 'vst2plug=%%s\n' "$(basename "$d")"
+    f="${d}plugin-meta.xml"; [ -f "$f" ] || continue   # also an installed plugin, so updates and removal find it there
+    u=$(sed -n 's/.* uid="\([^"]*\)".*/\1/p' "$f" | head -n 1); n=$(sed -n 's/.* name="\([^"]*\)".*/\1/p' "$f" | head -n 1)
+    printf 'plug=%%s\t%%s\t%%s\t%%s\n' "$v/VST2 Plugins" "$(basename "$d")" "$u" "$n"
+  done
+done
+M=%s; B=%s
+[ -r "$M" ] && echo "model=$(tr -d '\0' < "$M")"
+[ -f "$B" ] && echo "mpcos=$(grep -a -m1 -o '[0-9]\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]* ([0-9a-f]*)' "$B" 2>/dev/null | head -n 1)"
+for f in %s; do
+  for m in "$f"/*Plugin\ Manager*/mpc-plugin.json; do [ -f "$m" ] && echo "mgr=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$m" | head -n 1)" && break 2; done
+done
 for d in %s/*/; do
   f="${d}addin.manifest"; [ -f "$f" ] || continue
   u=0; [ -f "${d}uninstall.sh" ] && u=1
   printf 'addin=%%s\t%%s\t%%s\t%%s\n' "$(basename "$d")" "$(mval ADDIN_VERSION "$f")" "$u" "$(mval ADDIN_NAME "$f")"
 done
-true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d.cfg.LibcPaths, shQuote(d.cfg.MountsFile), d.cfg.RootGlobs, d.cfg.DriveGlob, d.cfg.SettingsGlob, shQuote(d.cfg.AddinsDir))
+true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d.cfg.LibcPaths, shQuote(d.cfg.MountsFile), d.cfg.RootGlobs, d.cfg.DriveGlob, d.cfg.SettingsGlob, d.cfg.SettingsGlob, d.cfg.VST2Globs, shQuote(d.cfg.ModelFile), shQuote(d.cfg.MPCBin), vst2Globs(d.cfg.VST2Globs)+` `+d.cfg.RootGlobs, shQuote(d.cfg.AddinsDir))
 	info := DeviceInfo{Host: host, Fingerprint: fp, Synths: d.cfg.SynthsDir, Installed: []string{}, Store: map[string]string{}, Stores: map[string]map[string]string{}}
 	var lines []string
 	var mu sync.Mutex
@@ -445,6 +508,7 @@ true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d
 	}
 	var cands []Root
 	var plugs []DevPlugin
+	vst2Folders := map[string]bool{}
 	var locs []string
 	for _, l := range lines {
 		k, v, ok := strings.Cut(l, "=")
@@ -495,6 +559,24 @@ true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d
 			if len(f) >= 4 {
 				plugs = append(plugs, DevPlugin{Root: f[0], Folder: f[1], UID: f[2], Name: f[3]})
 			}
+		case "vst2":
+			info.VST2 = v
+		case "vst2dir":
+			info.VST2Dirs = append(info.VST2Dirs, v)
+		case "vst2plug":
+			vst2Folders[v] = true
+		case "model":
+			info.Model = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(v), "Akai Professional "))
+		case "mpcos":
+			if f := strings.Fields(v); len(f) > 0 {
+				parts := strings.Split(f[0], ".")
+				if len(parts) > 3 {
+					parts = parts[:3] // "3.10.1.6" is MPC OS 3.10.1
+				}
+				info.MPCOS = strings.Join(parts, ".")
+			}
+		case "mgr":
+			info.Manager = strings.TrimSpace(v)
 		case "store":
 			if len(f) >= 3 && f[1] != "" {
 				if info.Stores[f[0]] == nil {
@@ -504,23 +586,21 @@ true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d
 			}
 		}
 	}
-	// Which location is the "internal drive": SynthsDir (/sdcard/Synths) on Gen1/Force. On a Gen2 unit (the Live III)
-	// /sdcard isn't mounted, so when SynthsDir isn't among the found roots but SynthsAlt (/nvme/Synths) is, that is the
-	// fixed internal drive and becomes primary.
+	// Which location is the "internal drive": SynthsDir (/sdcard/Synths) on Gen1/Force. On a Gen2 unit /sdcard isn't
+	// mounted, so when SynthsDir isn't among the found roots the first SynthsAlt that is (/nvme/Synths on a Live III,
+	// /storage/Synths on an MPC One) is the fixed internal drive and becomes primary.
 	primary := d.cfg.SynthsDir
-	if d.cfg.SynthsAlt != "" {
-		hasPrimary, hasAlt := false, false
-		for _, r := range cands {
-			switch r.Path {
-			case primary:
-				hasPrimary = true
-			case d.cfg.SynthsAlt:
-				hasAlt = true
+	found := map[string]bool{}
+	for _, r := range cands {
+		found[r.Path] = true
+	}
+	if !found[primary] {
+		for _, alt := range strings.Fields(d.cfg.SynthsAlt) {
+			if found[alt] {
+				primary = alt
+				info.Synths = primary
+				break
 			}
-		}
-		if !hasPrimary && hasAlt {
-			primary = d.cfg.SynthsAlt
-			info.Synths = primary
 		}
 	}
 	// the same storage through two paths is one location; the first path wins (the internal drive is listed first)
@@ -551,6 +631,9 @@ true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d
 		}
 	}
 	names := map[string]bool{}
+	for _, v := range info.VST2Dirs { // MPC OS 3.10.1+: plugins there are installed plugins too (not install targets: RunInstall maps a root to its drive's VST2 Plugins)
+		keep[v] = true
+	}
 	for _, p := range plugs {
 		if keep[p.Root] {
 			info.Plugins = append(info.Plugins, p)
@@ -567,6 +650,19 @@ true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d
 	}
 	if st, ok := info.Stores[primary]; ok {
 		info.Store = st
+	}
+	if info.VST2 != "" { // MPC OS 3.10.1+ lists only "VST2 Plugins": the others need moving (migrate.go)
+		synthsNames := map[string]bool{}
+		for _, p := range info.Plugins {
+			if !strings.HasSuffix(p.Root, "/VST2 Plugins") {
+				synthsNames[p.Folder] = true
+			}
+		}
+		for f := range synthsNames {
+			if !vst2Folders[f] {
+				info.LegacyCount++
+			}
+		}
 	}
 	d.Info = info
 	return nil

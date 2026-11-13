@@ -15,7 +15,12 @@ import (
 	"time"
 )
 
-const defaultCatalogURL = "https://sd88me.github.io/mpc-vst-plugins/catalog.json"
+// The catalog moves to the open-mpc organization. Until it has, and for installs that predate the move, the old address is
+// tried second: it stays alive as a copy (docs/ORG_MIGRATION.md). Both serve the same catalog.json.
+const (
+	defaultCatalogURL = "https://open-mpc.github.io/catalog.json"
+	legacyCatalogURL  = "https://sd88me.github.io/mpc-vst-plugins/catalog.json"
+)
 
 // Asset is one downloadable zip of a version: the Gen2 (aarch64) build sits beside the main (armv7) one.
 type Asset struct {
@@ -26,28 +31,69 @@ type Asset struct {
 
 // CatPlugin is what the app offers from the catalog: the newest stable, non-yanked version of every downloadable plugin.
 type CatPlugin struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Author      string   `json:"author"`
-	Kind        string   `json:"kind"`
-	Role        string   `json:"role,omitempty"` // "midi": a MIDI generator or sequencer (listed under its own tab)
-	Summary     string   `json:"summary"`
-	Version     string   `json:"version"`
-	Size        int64    `json:"size"`
-	SHA256      string   `json:"sha256"`
-	URL         string   `json:"url"`
-	Skin        string   `json:"skin"`
-	ParamCompat int      `json:"param_compat"`
-	UID         string   `json:"uid"`
-	UserData    []string `json:"user_data"`
-	Defer       *bool    `json:"defer"`         // true: the installer understands -n (one MPC restart for a batch); false: it restarts MPC itself; null: the catalog does not say
-	OSCompat    []string `json:"os_compat"`     // the MPC OS generations it works on ("2.x", "3.x"); empty when the catalog does not say
-	OSWhy       []string `json:"os_compat_why"` // why it is not 2.x, when it is not
-	MaxGlibc    string   `json:"max_glibc"`     // the newest glibc its library needs; empty when the catalog does not say
-	Tested2x    bool     `json:"tested_2x"`     // the version has a tested.json entry on MPC OS 2.x firmware
-	Gen2        bool     `json:"gen2"`          // the version also has a Gen2 (aarch64) zip; SHA256/URL/Size above are the Gen1 (armv7) one
-	Aarch64     *Asset   `json:"aarch64,omitempty"`
-	Gen2Only    bool     `json:"gen2_only"` // the version has no Gen1 zip at all: SHA256/URL/Size above are the Gen2 (aarch64) one
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Author      string          `json:"author"`
+	Kind        string          `json:"kind"`
+	Role        string          `json:"role,omitempty"`    // "midi": a MIDI generator or sequencer (listed under its own tab)
+	Devices     []string        `json:"devices,omitempty"` // the only devices it is for ("mpc-sample"); empty for every MPC
+	Summary     string          `json:"summary"`
+	Version     string          `json:"version"`
+	Size        int64           `json:"size"`
+	SHA256      string          `json:"sha256"`
+	URL         string          `json:"url"`
+	Skin        string          `json:"skin"`
+	ParamCompat int             `json:"param_compat"`
+	UID         string          `json:"uid"`
+	UserData    []string        `json:"user_data"`
+	UserFiles   []UserFileGroup `json:"user_files,omitempty"`
+	Defer       *bool           `json:"defer"`         // true: the installer understands -n (one MPC restart for a batch); false: it restarts MPC itself; null: the catalog does not say
+	OSCompat    []string        `json:"os_compat"`     // the MPC OS generations it works on ("2.x", "3.x"); empty when the catalog does not say
+	OSWhy       []string        `json:"os_compat_why"` // why it is not 2.x, when it is not
+	MaxGlibc    string          `json:"max_glibc"`     // the newest glibc its library needs; empty when the catalog does not say
+	Tested2x    bool            `json:"tested_2x"`     // the version has a tested.json entry on MPC OS 2.x firmware
+	Gen2        bool            `json:"gen2"`          // the version also has a Gen2 (aarch64) zip; SHA256/URL/Size above are the Gen1 (armv7) one
+	Aarch64     *Asset          `json:"aarch64,omitempty"`
+	Gen2Only    bool            `json:"gen2_only"`          // the version has no Gen1 zip at all: SHA256/URL/Size above are the Gen2 (aarch64) one
+	Requires    string          `json:"requires,omitempty"` // the author's one line of extra requirements (ROMs, a network connection), shown before install
+	// for an addin: the other addins whose newest versions replace some of the same MPC functions where one of the two may not pass
+	// the calls on (catalog_build.py hook_overlaps_of)
+	SharesHooks []SharedHooks `json:"shares_hooks,omitempty"`
+	Depends     []Dep         `json:"depends,omitempty"`   // the other plugins this version needs (deps.go)
+	Conflicts   []string      `json:"conflicts,omitempty"` // catalog ids it must not be installed with
+	versions    []CatPlugin   // every other listed stable version, newest first: dependency picks and installed versions' rules
+}
+
+// SharedHooks is another addin that defines some of the same functions, where Unchained (catalog ids) may not pass the calls on: in
+// LD_PRELOAD the first wins, so one of the two may stop working. The app warns when both would be on the device; it never blocks.
+type SharedHooks struct {
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Symbols   []string `json:"symbols"`
+	Unchained []string `json:"unchained"`
+}
+
+// deviceNames are the catalog's device ids (catalog_build.py DEVICES) as people know them.
+var deviceNames = map[string]string{"mpc-sample": "MPC Sample"}
+
+// ForDevice is ForArch for a device that is device (DeviceInfo.Device: "mpc-sample", or "" for any other MPC), after refusing a plugin
+// limited to other devices (registry "devices"): an addin for the Sample's screen does nothing on a Live III.
+func (c CatPlugin) ForDevice(arch, device string) (CatPlugin, error) {
+	if len(c.Devices) > 0 {
+		ok := false
+		var names []string
+		for _, d := range c.Devices {
+			ok = ok || d == device
+			if n := deviceNames[d]; n != "" {
+				d = n
+			}
+			names = append(names, d)
+		}
+		if !ok {
+			return c, fmt.Errorf("%s %s is only for the %s", c.Name, c.Version, strings.Join(names, " and "))
+		}
+	}
+	return c.ForArch(arch)
 }
 
 // ForArch returns the plugin with the zip that fits a device whose `uname -m` is arch: the armv7 zip on Gen1 and Force, the aarch64
@@ -69,14 +115,16 @@ func (c CatPlugin) ForArch(arch string) (CatPlugin, error) {
 type rawCatalog struct {
 	Schema  int `json:"schema"`
 	Plugins []struct {
-		ID           string `json:"id"`
-		Name         string `json:"name"`
-		Author       string `json:"author"`
-		Kind         string `json:"kind"`
-		Role         string `json:"role"`
-		Summary      string `json:"summary"`
-		Distribution string `json:"distribution"`
-		Latest       string `json:"latest"`
+		ID           string        `json:"id"`
+		Name         string        `json:"name"`
+		Author       string        `json:"author"`
+		Kind         string        `json:"kind"`
+		Role         string        `json:"role"`
+		Devices      []string      `json:"devices"`
+		Summary      string        `json:"summary"`
+		Distribution string        `json:"distribution"`
+		Latest       string        `json:"latest"`
+		SharesHooks  []SharedHooks `json:"shares_hooks"`
 		Versions     []struct {
 			Version     string           `json:"version"`
 			Size        int64            `json:"size"`
@@ -91,10 +139,15 @@ type rawCatalog struct {
 			Assets      map[string]Asset `json:"assets"`
 			Gen2Only    bool             `json:"gen2_only"`
 			ParamCompat int              `json:"param_compat"`
+			Requires    string           `json:"requires"`
+			Depends     []Dep            `json:"depends"`
+			Conflicts   []string         `json:"conflicts"`
 			Manifest    struct {
-				Skin     string   `json:"skin"`
-				UID      string   `json:"uid"`
-				UserData []string `json:"user_data"`
+				Requires  string          `json:"requires"` // catalogs built before the version-level field
+				Skin      string          `json:"skin"`
+				UID       string          `json:"uid"`
+				UserData  []string        `json:"user_data"`
+				UserFiles []UserFileGroup `json:"user_files"`
 			} `json:"manifest"`
 			Tested []struct {
 				Firmware string `json:"firmware"`
@@ -116,8 +169,10 @@ func parseCatalog(data []byte) ([]CatPlugin, error) {
 		if p.Distribution != "release" || !idRe.MatchString(p.ID) {
 			continue
 		}
+		var vs []CatPlugin
+		latest := -1
 		for _, v := range p.Versions {
-			if v.Yanked || v.Channel != "stable" || v.Version != p.Latest || !isHTTPS(v.URL) || len(v.SHA256) != 64 {
+			if v.Yanked || v.Channel != "stable" || !isHTTPS(v.URL) || len(v.SHA256) != 64 {
 				continue
 			}
 			var a64 *Asset
@@ -128,11 +183,29 @@ func parseCatalog(data []byte) ([]CatPlugin, error) {
 			for _, t := range v.Tested {
 				tested2x = tested2x || strings.HasPrefix(t.Firmware, "2.")
 			}
-			out = append(out, CatPlugin{ID: p.ID, Name: p.Name, Author: p.Author, Kind: p.Kind, Role: p.Role, Summary: p.Summary, Version: v.Version,
-				Size: v.Size, SHA256: v.SHA256, URL: v.URL, Skin: v.Manifest.Skin, ParamCompat: v.ParamCompat, UID: v.Manifest.UID, UserData: v.Manifest.UserData, Defer: v.Defer,
-				OSCompat: v.OSCompat, OSWhy: v.OSWhy, MaxGlibc: v.MaxGlibc, Tested2x: tested2x, Gen2: a64 != nil, Aarch64: a64, Gen2Only: v.Gen2Only && a64 != nil})
-			break
+			req := v.Requires
+			if req == "" {
+				req = strings.TrimSpace(v.Manifest.Requires)
+			}
+			if v.Version == p.Latest {
+				latest = len(vs)
+			}
+			vs = append(vs, CatPlugin{ID: p.ID, Name: p.Name, Author: p.Author, Kind: p.Kind, Role: p.Role, Devices: p.Devices, Summary: p.Summary, Version: v.Version,
+				Size: v.Size, SHA256: v.SHA256, URL: v.URL, Skin: v.Manifest.Skin, ParamCompat: v.ParamCompat, UID: v.Manifest.UID, UserData: v.Manifest.UserData, UserFiles: v.Manifest.UserFiles, Defer: v.Defer,
+				OSCompat: v.OSCompat, OSWhy: v.OSWhy, MaxGlibc: v.MaxGlibc, Tested2x: tested2x, Gen2: a64 != nil, Aarch64: a64, Gen2Only: v.Gen2Only && a64 != nil,
+				Requires: req, SharesHooks: p.SharesHooks, Depends: v.Depends, Conflicts: v.Conflicts})
 		}
+		if latest < 0 {
+			continue
+		}
+		c := vs[latest]
+		for i, o := range vs {
+			if i != latest {
+				c.versions = append(c.versions, o)
+			}
+		}
+		sort.Slice(c.versions, func(i, j int) bool { return vcmp(c.versions[i].Version, c.versions[j].Version) > 0 })
+		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	return out, nil
@@ -145,8 +218,11 @@ func isHTTPS(u string) bool {
 
 var httpClient = &http.Client{Timeout: 20 * time.Minute}
 
+// catalogClient has a timeout of its own: a first address that hangs must not keep the next one from being tried.
+var catalogClient = &http.Client{Timeout: 30 * time.Second}
+
 func FetchCatalog(u string) ([]CatPlugin, error) {
-	resp, err := http.Get(u) //nolint:gosec // the catalog address is the app's own setting
+	resp, err := catalogClient.Get(u) //nolint:gosec // the catalog address is the app's own setting
 	if err != nil {
 		return nil, err
 	}

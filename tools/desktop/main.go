@@ -64,12 +64,15 @@ func main() {
 		os.Exit(1)
 	}
 	app := NewApp(defaultConfig(), token, ln.Addr().String(), *catalog, work)
+	if *catalog == defaultCatalogURL {
+		app.fallbacks = []string{legacyCatalogURL} // a custom --catalog is used alone
+	}
 	if *noUpdateCheck {
 		app.releasesURL = ""
 	}
 	link := fmt.Sprintf("http://%s/?t=%s", ln.Addr().String(), token)
 	srv := &http.Server{Handler: app.Handler(), ReadHeaderTimeout: 10 * time.Second}
-	fmt.Println("MPC plugin installer", version, "is running. Open this link in your browser (it only works on this computer):")
+	fmt.Println("OpenMPC Plugins & Tools Installer", version, "is running. Open this link in your browser (it only works on this computer):")
 	fmt.Println()
 	fmt.Println("  " + link)
 	fmt.Println()

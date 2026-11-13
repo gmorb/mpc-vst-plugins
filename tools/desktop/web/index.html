@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MPC Plugin Installer</title>
+<title>OpenMPC Installer</title>
 <style>
 :root { --bg:#e9e7e2; --panel:#f7f6f3; --panel-2:#eeede8; --line:#cdcac2; --fg:#1b1c1f; --muted:#64666d; --accent:#d63a30; --accent-fg:#fff;
   --ok:#2e7d32; --lcd:#1b1c1f; --lcd-fg:#f4f4f4; --display:"Titillium Web","Arial Narrow",system-ui,sans-serif; --text:"Roboto",system-ui,sans-serif; color-scheme:light; }
@@ -29,6 +29,12 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .msg { margin:10px 0 0; font-size:14px; }
 .msg.err { color:var(--accent); } .msg.ok { color:var(--ok); }
+.sub b, .small b, .guide b { font-weight:700; color:var(--fg); }
+.guide ul, .guide ol { margin:4px 0 12px; padding-left:22px; }
+.guide li { margin:4px 0; }
+.guide li > ul { margin:2px 0 4px; }
+.guide .lead { margin:10px 0 2px; }
+.callout { border-left:3px solid var(--accent); background:var(--panel-2); padding:8px 12px; margin:8px 0 12px; font-size:14px; border-radius:0 6px 6px 0; }
 .small { font-size:13px; color:var(--muted); }
 ul.list { list-style:none; margin:0; padding:0; border-top:1px solid var(--line); }
 ul.list li { display:flex; gap:12px; align-items:flex-start; padding:10px 2px; border-bottom:1px solid var(--line); }
@@ -37,6 +43,32 @@ ul.list .t { flex:1; min-width:0; } ul.list .t b { font:700 16px var(--display);
 ul.list .t .d { display:block; color:var(--muted); font-size:13px; }
 .tag { display:inline-block; vertical-align:middle; font:600 11px var(--display); letter-spacing:.08em; text-transform:uppercase; border:1px solid var(--line); border-radius:4px; padding:2px 6px; margin-left:8px; color:var(--muted); }
 .tag.ok { color:var(--ok); border-color:var(--ok); }
+.uf { margin:14px 0 18px; } .uf h3 { font:700 16px var(--display); letter-spacing:.04em; text-transform:uppercase; margin:0 0 4px; }
+.uf .tag.maybe { color:var(--accent); border-color:var(--accent); } .uf .tag.bad { color:var(--err, #d44); border-color:var(--err, #d44); }
+.uf input[type=file] { max-width:100%; } .uf .row button { margin-left:8px; }
+
+.hrow { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; } .hrow .linkbtn { margin-top:10px; white-space:nowrap; }
+.dots { display:flex; gap:6px; margin:0 0 14px; } .dots i { height:4px; flex:1; background:var(--line); border-radius:2px; } .dots i.on { background:var(--accent); }
+section.wz { padding:24px 24px 20px; }
+h2.q { font-size:26px; letter-spacing:.03em; margin-bottom:6px; }
+.opts { display:grid; gap:10px; }
+.opt { display:flex; gap:14px; align-items:center; justify-content:space-between; text-align:left; width:100%; background:#fff; border:1px solid var(--line); border-radius:8px;
+  padding:14px 16px; font:400 15px/1.4 var(--text); letter-spacing:0; text-transform:none; color:var(--fg); cursor:pointer; }
+.opt:hover { border-color:var(--fg); } .opt b { display:block; font-size:16px; font-weight:700; } .opt small { display:block; color:var(--muted); font-size:13px; }
+.opt .tag { margin:0; flex:none; }
+.models { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:8px; } .models .opt { font-weight:600; }
+.grp { font:600 11px var(--display); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:14px 0 6px; }
+.wnav { display:flex; justify-content:space-between; align-items:center; margin-top:18px; }
+ol.plan { counter-reset:s; list-style:none; padding:0; margin:4px 0 18px; }
+ol.plan li { counter-increment:s; display:flex; gap:12px; align-items:flex-start; padding:10px 0; border-top:1px solid var(--line); }
+ol.plan li::before { content:counter(s); flex:0 0 26px; height:26px; border-radius:50%; background:var(--accent); color:#fff; display:grid; place-items:center; font:700 14px var(--display); }
+ol.plan li > span { flex:1; } ol.plan em.then { display:block; font-style:normal; color:var(--muted); font-size:13px; margin-top:3px; } ol.plan li small { flex:none; color:var(--muted); font-size:12px; white-space:nowrap; padding-top:3px; }
+details.others { margin-top:16px; border-top:1px solid var(--line); padding-top:12px; } details.others summary { cursor:pointer; color:var(--muted); margin-bottom:8px; }
+.wzfor { display:none; margin:0 0 12px; } .fromwiz .wzfor { display:flex; gap:12px; align-items:center; }
+.fromwiz #v2-archq, .fromwiz > section.guide { display:none; }
+.toolbar { display:flex; justify-content:space-between; margin:0 0 8px; }
+.ktabs[hidden] { display:none; }
+.devline { background:var(--lcd); color:var(--lcd-fg); border-radius:6px; padding:9px 12px; font:600 14px var(--display); letter-spacing:.05em; margin:10px 0 0; }
 .drop { border:2px dashed var(--line); border-radius:6px; padding:22px; text-align:center; color:var(--muted); margin-top:14px; cursor:pointer; background:var(--bg); }
 .drop.over { border-color:var(--accent); color:var(--fg); }
 .log { background:var(--lcd); color:var(--lcd-fg); border-radius:6px; padding:12px; font:500 12.5px/1.5 ui-monospace,Menlo,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; max-height:340px; overflow:auto; margin:12px 0 0; }
@@ -72,6 +104,8 @@ details.collapse > summary .hint { font:600 12px/1 var(--display); letter-spacin
 details.collapse[open] > summary .hint { font-size:0; }
 details.collapse[open] > summary .hint::after { content:"Hide"; font-size:12px; }
 details.collapse[open] > summary { margin-bottom:6px; }
+#stick-mode > details.collapse { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:16px 18px; margin-bottom:16px; }
+#stick-mode > details.collapse > section { background:none; border:0; border-radius:0; padding:0; margin:0 0 12px; }
 .row input[type=number] { width:100%; font:400 15px var(--text); color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; }
 ul.list li.grp { display:block; padding:12px 2px 6px; font:700 12px/1 var(--display); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--line); }
 #drivelist li { flex-wrap:wrap; align-items:center; } #drivelist .t { flex:1 1 180px; min-width:0; } #drivelist button { flex:none; }
@@ -86,25 +120,83 @@ fieldset.where legend { font:600 11px/1 var(--display); letter-spacing:.1em; tex
 .badge[hidden] { display:none; }
 details.collapse > summary .badge + .hint { margin-left:12px; }
 footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
+img.shot { display: block; max-width: 100%; height: auto; margin: 8px 0 4px; border: 1px solid #8884; border-radius: 6px; }
+#v2-ready { margin-top: 0; color: #2e7d32; }
+details.way { border: 1px solid #8884; border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+details.way summary { cursor: pointer; }
+details.way[open] summary { margin-bottom: 6px; }
 </style>
 </head>
 <body>
 <div class="wrap">
 <div id="newver" class="small" hidden style="background:var(--panel);border:1px solid var(--accent);border-radius:6px;padding:10px 14px;margin-top:16px"></div>
 <header>
-  <h1>MPC plugin installer</h1>
-  <p class="lede">Install plugins from the catalog, or zips you already have, on your MPC or Force. This page runs on your computer only. Nothing about your device is saved.</p>
+  <div class="hrow"><h1>OpenMPC Plugins &amp; Tools Installer</h1><button type="button" class="linkbtn" id="to-tools">All tools</button></div>
+  <p class="lede">Get the OpenMPC Plugin Manager and community plugins onto your MPC. Answer a few questions and it shows you the way. This runs on your computer only.</p>
 </header>
 
+<div id="wiz">
+  <div class="dots" id="wiz-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <section class="wz" id="wz-model">
+    <h2 class="q">Which MPC do you have?</h2>
+    <p class="sub">A couple of questions, then the steps for your MPC.</p>
+    <div class="grp">Gen1</div>
+    <div class="models">
+      <button type="button" class="opt" data-gen="armv7">MPC Live / Live II</button><button type="button" class="opt" data-gen="armv7">MPC One / One+</button>
+      <button type="button" class="opt" data-gen="armv7">MPC X / X SE</button><button type="button" class="opt" data-gen="armv7">MPC Key 61 / Key 37</button>
+      <button type="button" class="opt" data-gen="force">Akai Force</button>
+    </div>
+    <div class="grp">Gen2</div>
+    <div class="models">
+      <button type="button" class="opt" data-gen="aarch64">MPC Live III</button><button type="button" class="opt" data-gen="aarch64">MPC One G2</button>
+      <button type="button" class="opt" data-gen="aarch64">MPC Key G2</button><button type="button" class="opt" data-gen="aarch64">MPC XL</button>
+    </div>
+  </section>
+  <section class="wz" id="wz-os" hidden>
+    <h2 class="q">Which MPC OS is on it?</h2>
+    <p class="sub">On the MPC: Menu &gt; Preferences &gt; Info shows the version.</p>
+    <div class="opts">
+      <button type="button" class="opt" data-os="new"><span><b>3.10.1 or later</b><small>Preferences has an Enhancements page</small></span></button>
+      <button type="button" class="opt" data-os="old"><span><b>3.0 to 3.9.1</b></span></button>
+      <button type="button" class="opt" data-os="2x"><span><b>2.x</b><small>Install over Wi-Fi with SSH; no Plugin Manager</small></span></button>
+      <button type="button" class="opt" id="wz-unsure"><span><b>I'm not sure</b></span></button>
+    </div>
+    <p class="callout" id="wz-oshelp" hidden>Press <b>Menu</b>, tap <b>Preferences</b>, then <b>Info</b>: the number after Version is the MPC OS.
+      If Preferences has an <b>Enhancements</b> page, it is 3.10.1 or later.</p>
+    <div class="wnav"><button type="button" class="wback">Back</button></div>
+  </section>
+  <section class="wz" id="wz-ssh" hidden>
+    <h2 class="q">Can you log in to it over SSH?</h2>
+    <p class="sub">Only if you, or a mod, set this up before. If you don't know what SSH is, the answer is no.</p>
+    <div class="opts">
+      <button type="button" class="opt" data-net="nossh"><span><b>No, or not sure</b><small id="wz-nossh-d">A USB stick installs the Plugin Manager for you</small></span><span class="tag ok">Easiest</span></button>
+      <button type="button" class="opt" data-net="ssh"><span><b>Yes</b><small>Install from this computer over Wi-Fi</small></span></button>
+    </div>
+    <div class="wnav"><button type="button" class="wback">Back</button></div>
+  </section>
+  <section class="wz" id="wz-plan" hidden>
+    <p class="small" id="wz-for"></p>
+    <h2 class="q" id="wz-title"></h2>
+    <p class="sub" id="wz-sub"></p>
+    <ol class="plan" id="wz-steps"></ol>
+    <div id="wz-ways"></div>
+    <button type="button" class="primary" id="wz-go"></button>
+    <details class="others" id="wz-others"><summary>Other ways</summary><div class="opts" id="wz-alts"></div></details>
+    <div class="wnav"><button type="button" class="wback">Back</button><button type="button" class="linkbtn" id="wz-restart">Start over</button></div>
+  </section>
+</div>
+<div id="toolsview" hidden>
+<div class="toolbar"><button type="button" class="linkbtn" id="to-setup">&larr; Back to your steps</button><button type="button" class="linkbtn" id="to-all" hidden>Show all tools</button></div>
+
 <div class="ktabs" id="modetabs" role="tablist" aria-label="Mode">
-  <button type="button" id="mode-install" role="tab" aria-selected="true">Install over SSH</button>
-  <button type="button" id="mode-stick" role="tab" aria-selected="false">Plugin install (no SSH or connection needed)</button>
+  <button type="button" id="mode-stick" role="tab" aria-selected="true">USB sticks (no connection to the MPC)</button>
+  <button type="button" id="mode-install" role="tab" aria-selected="false">Install over Wi-Fi (SSH)</button>
 </div>
 
-<div id="install-mode">
+<div id="install-mode" hidden>
 <section id="s1">
   <h2><span class="n">1</span>Connect to your device</h2>
-  <p class="sub">Your device needs SSH access as <b>root</b> (a modded unit). Use the IP address shown on the device or in your router.</p>
+  <p class="sub">Your device needs SSH access as <b>root</b>: <b>MPC OS 3.10.1</b> with Developer mode on (Preferences &gt; Enhancements &gt; Developer Panel, then Shift + Menu, mode Developer), or a modded unit on older MPC OS. Use the IP address shown in Preferences &gt; Wi-Fi or in your router.</p>
   <p class="sub">Plugins and patches are community-provided and run as root on your device. Use them at your own risk, with no warranty: they can crash MPC, lose unsaved work or, at worst, leave the device needing a reinstall of its OS. Save your project and back up first. Not affiliated with or endorsed by Akai Professional.</p>
   <form id="conn" class="row" autocomplete="off">
     <label class="f">IP address<input id="host" type="text" inputmode="decimal" placeholder="e.g. 192.168.1.20" spellcheck="false" required></label>
@@ -112,6 +204,15 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
     <button class="primary" id="connect" type="submit">Connect</button>
   </form>
   <p class="msg" id="connmsg" role="status" aria-live="polite"></p>
+  <p class="devline" id="devline" hidden></p>
+</section>
+
+<section id="mig" class="off" hidden>
+  <h2>MPC OS 3.10.1: move your plugins to VST2 Plugins</h2>
+  <p class="sub">On MPC OS 3.10.1 and later the plugin browser lists only plugins in a <code>VST2 Plugins</code> folder (Preferences, Enhancements: turn on <b>External Plugin Support</b> first). Plugins installed before are still there, and saved projects still load them, but you can't pick them from the browser. <b>Check</b> shows what would be copied; <b>Move</b> copies every installed plugin folder, your ROMs and files included, into <code>VST2 Plugins</code> on the same drive and restarts MPC. Nothing is deleted and <code>MPC.settings</code> is not edited. On older MPC OS this does nothing.</p>
+  <div class="row"><button id="mig-check" type="button">Check</button><button class="primary" id="mig-move" type="button">Move…</button></div>
+  <p class="msg" id="mig-msg" role="status" aria-live="polite"></p>
+  <pre class="log" id="mig-log" hidden></pre>
 </section>
 
 <section id="s2" class="off">
@@ -142,9 +243,17 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   <pre class="log" id="log" hidden></pre>
 </section>
 
+<section id="sf" class="off" hidden>
+<details id="df" class="collapse" open>
+  <summary><h2><span class="n">4</span>Your ROMs and files</h2><span class="hint">Show</span></summary>
+  <p class="sub">Some plugins need files you own and that cannot be shared, such as a synth's ROM. Choose them here: the app checks each file, tells you what it is or why it is wrong, and copies the good ones into the plugin's folder on the device. The plugin reads them the next time it loads, so MPC does not restart.</p>
+  <div id="ufbody"></div>
+</details>
+</section>
+
 <section id="s4" class="off">
 <details id="d4" class="collapse">
-  <summary><h2><span class="n">4</span>Remove plugins</h2><span class="hint">Show</span></summary>
+  <summary><h2><span class="n">5</span>Remove plugins</h2><span class="hint">Show</span></summary>
   <p class="sub">The plugins on your device. Removing deletes the plugin's folder and its entry in MPC's plugin list (MPC's settings are backed up first). Your own files inside it, such as ROMs, kits and dumps, are kept. Addins (libraries MPC loads when it starts) are listed last: removing one runs its own uninstaller, which takes it out of MPC's start-up list and deletes its folder, settings included.</p>
   <ul class="list" id="dev"><li class="small">Connect to see what is on the device.</li></ul>
   <button id="rm" disabled>Remove…</button>
@@ -155,7 +264,7 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 
 <section id="s5" class="off">
 <details id="d5" class="collapse">
-  <summary><h2><span class="n">5</span>Register plugin folders</h2><span class="badge" id="regbadge" hidden></span><span class="hint">Show</span></summary>
+  <summary><h2><span class="n">6</span>Register plugin folders</h2><span class="badge" id="regbadge" hidden></span><span class="hint">Show</span></summary>
   <p class="sub">A plugin folder only shows up in MPC once it is in MPC's plugin list. Folders you copied in yourself, or that MPC forgot (for example because a card was out when MPC started), are not. This adds them, and drops entries whose plugin file is gone. Everything else in the list is left alone. MPC's settings are backed up first and MPC restarts once.</p>
   <ul class="list" id="reglist"><li class="small">Connect to check.</li></ul>
   <button id="reg" disabled>Register…</button>
@@ -166,7 +275,7 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 
 <section id="s6" class="off">
 <details id="d6" class="collapse">
-  <summary><h2><span class="n">6</span>Clean up old backups</h2><span class="hint">Show</span></summary>
+  <summary><h2><span class="n">7</span>Clean up old backups</h2><span class="hint">Show</span></summary>
   <p class="sub">Every install, removal and sync leaves a copy of MPC's settings file on the device. They are small, but they pile up. This keeps the newest ones and deletes the older ones. The newest backup is never deleted, and MPC is not restarted.</p>
   <p class="small" id="bkinfo">Connect to see them.</p>
   <div class="row"><label class="f">Keep the newest<input id="keepn" type="number" min="1" max="1000" value="10" inputmode="numeric"></label><button id="prune" disabled>Delete older backups…</button></div>
@@ -176,7 +285,7 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 
 <section id="s7" class="off">
 <details id="d7" class="collapse">
-  <summary><h2><span class="n">7</span>Advanced: device patches</h2><span class="hint">Show</span></summary>
+  <summary><h2><span class="n">8</span>Advanced: device patches</h2><span class="hint">Show</span></summary>
   <p class="sub"><b>Not for most people.</b> A patch changes the device itself (for example Akai's own MPC program), not a plugin. If it goes wrong, MPC may not start until you Undo it or reinstall the OS. Checking only <b>looks</b>: it asks the device which patches are applied and changes nothing. <b>Apply</b> and <b>Undo</b> run the patch's own script on the device, with its default settings, and only after you type a confirmation word. Read the patch's guide first; one patch at a time; never as part of a plugin install. For options (such as which buttons to remap), run the script yourself over SSH as its guide says.</p>
   <div class="row"><button id="patchcheck" type="button" disabled>Check the device</button></div>
   <p class="small" id="patchinfo">Connect, then open this step to check.</p>
@@ -189,25 +298,100 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 <div id="selbar" hidden role="region" aria-label="Selected plugins"><span><b id="selcount"></b> <button class="linkbtn" type="button" id="selclear">Clear</button></span><button class="primary" id="go2" type="button">Install…</button></div>
 </div>
 
-<div id="stick-mode" hidden>
-<section id="st-intro">
-  <p class="sub"><b>What this is for:</b> installing the plugin manager (and other catalog plugins) on a device you have no SSH
-  access to at all -- no connecting, no password, no setup. You build a small USB stick here; it does the rest on the device
-  itself.</p>
-  <p class="sub"><b>How it works:</b> MPC OS has its own stock "USB script" reader, built in by Akai (not a security hole): a
-  stick with the right files on it makes MPC ask one on-screen question, then run a script as root. This builds that stick.
-  Nothing is installed until you confirm the prompt on the device's own screen.</p>
-  <p class="sub"><b>Works on:</b> Gen1 MPC (Live/One/X/Key), Force, and Gen2 (Live III, One G2, Key(s) G2) -- but only on
-  <b>MPC OS up to 3.9.1</b>. Akai closed this route in <b>MPC OS 3.10</b> and later; a stick built here will not work on a
-  device already updated past that.</p>
-  <p class="sub"><b>Gen2 devices specifically:</b> their storage can't be made to remember changes the way Gen1/Force can. The
-  plugin manager itself, once installed, stays. But anything else this does -- putting back addins you'd already installed,
-  or the optional SSH access below -- is undone by every reboot, so you'd reinsert the stick and confirm the prompt again
-  each time the device restarts.</p>
+<div id="stick-mode">
+<details id="v2" class="collapse">
+<summary><h2>MPC OS 3.10.1 or later: Plugin Manager stick</h2><span class="hint">Show</span></summary>
+<section class="guide">
+  <ul>
+    <li><b>What it is:</b> writes the <b>OpenMPC Plugin Manager VST</b> into a <code>VST2 Plugins</code> folder on a USB stick or SD card. On the MPC you add it to a track and install everything else from its screen, or from its web page on your phone or computer. Nothing on the MPC is modified.</li>
+    <li><b>Works on:</b> MPC OS <b>3.10.1 or later</b>, Gen1 MPC (Live, Live II, One, X, Key) and Gen2 (Live III, One G2, Key G2, XL).</li>
+  </ul>
+</section>
+<section>
+  <p class="wzfor" id="v2-for"></p>
+  <fieldset class="where" id="v2-archq"><legend>Your MPC</legend>
+    <label class="whereopt"><input type="radio" name="v2-arch" value="armv7" checked><span>Gen1 (32-bit)<small>MPC Live, Live II, One, One+, X, X SE, Key 61, Key 37</small></span></label>
+    <label class="whereopt"><input type="radio" name="v2-arch" value="aarch64"><span>Gen2 (64-bit)<small>MPC Live III, One G2, Key G2, XL</small></span></label>
+  </fieldset>
+  <div id="v2-drives"></div>
+  <div class="row">
+    <label class="f">USB stick, SD card or folder<input id="v2-out" type="text" placeholder="pick a mounted drive above, or Browse" spellcheck="false"></label>
+    <button id="v2-out-browse" type="button">Browse…</button>
+    <button class="primary" id="v2-mgr" type="button">Write the Plugin Manager</button>
+  </div>
+  <details id="v2-more" class="sub">
+    <summary>No Wi-Fi on the MPC? Put plugins (and their ROMs) straight onto the stick instead</summary>
+    <div class="row"><label class="f">Find a plugin<input id="v2-q" type="text" placeholder="name, kind or words from its summary" spellcheck="false"></label></div>
+    <p class="small" id="v2-count"></p>
+    <ul class="list" id="v2-list" style="max-height:340px;overflow:auto"></ul>
+    <div class="row"><button id="v2-build" type="button">Write the ticked plugins…</button></div>
+  </details>
+  <p class="msg" id="v2-msg" role="status" aria-live="polite"></p>
+  <pre class="log" id="v2-log" hidden></pre>
+  <div id="v2-roms" hidden><h3>Your ROMs and files</h3><p class="sub">These plugins need files you supply (a synth's ROMs). Each one is checked here before it is written into the plugin's folder on the stick.</p><ul class="list" id="v2-romlist"></ul></div>
+  <div class="guide" id="v2-next">
+    <h3 id="v2-ready" hidden>Stick ready</h3>
+    <p class="lead"><b>Then, on your MPC.</b> <i>Save your project first.</i></p>
+    <ol>
+      <li>Preferences, <b>Enhancements</b>: turn on <b>Enable Enhancements</b> and <b>External Plugin Support</b> (read the warning). Wait a few seconds, so the setting is saved.
+        <img class="shot" src="/img/enhancements.png" alt="Preferences, Enhancements on an MPC: Enable Enhancements and External Plugin Support ticked" width="640" height="400" loading="lazy"></li>
+      <li><b>Plug in</b> the stick. No restart needed: MPC finds it within a few seconds.</li>
+      <li>Add a track: <b>External VST Plugins &gt; Plugin Manager</b>. Its status line shows an address like <code>http://192.168.1.40:8790</code>: open it on a phone or computer on the same Wi-Fi to install plugins, move old ones and add ROMs. Save your project with the Plugin Manager on a track and the page comes back after each restart.
+        <img class="shot" src="/img/address-line.png" alt="The Plugin Manager status line with its web address" width="1279" height="75" loading="lazy"></li>
+    </ol>
+  </div>
+</section>
+</details>
+<details id="l1" class="collapse">
+<summary><h2>MPC OS 3.9.1 or earlier, no SSH: Plugin Manager stick (one prompt)</h2><span class="hint">Show</span></summary>
+<section class="guide">
+  <ul>
+    <li><b>What it is:</b> the simplest way. A stick that installs the <b>OpenMPC Plugin Manager VST</b> for you. Confirm one prompt and MPC restarts with it installed. No SSH, no network.</li>
+    <li id="l1-osq"><b>Which MPC OS are you on?</b>
+      <label><input type="radio" name="l1-os" value="old"> 3.9.1 or earlier</label>
+      <label><input type="radio" name="l1-os" value="new"> 3.10</label>
+      <label><input type="radio" name="l1-os" value="unsure"> Not sure</label></li>
+  </ul>
+  <p class="msg" id="l1-os-msg" role="status" aria-live="polite"></p>
+  <div id="l1-form" hidden>
+    <div id="l1-drives"></div>
+    <div class="row">
+      <label class="f">Bundle (optional: leave empty to download the latest)<input id="l1-bundle" type="text" placeholder="leave empty, or choose the bundle .zip (or the folder it unpacked to)" spellcheck="false"></label>
+      <button id="l1-bundle-browse" type="button">Browse…</button>
+    </div>
+    <div class="row">
+      <label class="f">Empty USB stick or folder<input id="l1-out" type="text" placeholder="a mounted stick, or Browse" spellcheck="false"></label>
+      <button id="l1-out-browse" type="button">Browse…</button>
+      <button class="primary" id="l1-build" type="button">Write stick…</button>
+    </div>
+    <p class="msg" id="l1-msg" role="status" aria-live="polite"></p>
+    <ol>
+      <li>Save your project. The install stops MPC.</li>
+      <li>Insert the stick and choose <b>Open</b> on the prompt.</li>
+      <li>Wait for MPC to restart. A <code>g2-install-result.txt</code> on the stick says what happened.</li>
+    </ol>
+  </div>
+</section>
+</details>
+<details id="dadv" class="collapse">
+<summary><h2>MPC OS 3.9.1 or earlier: turn on SSH with a stick (then use Install over Wi-Fi)</h2><span class="hint">Show</span></summary>
+<section id="st-intro" class="guide">
+  <ul>
+    <li><b>What this is for:</b> developers who want an ordinary <b>SSH login</b> on their device, to install plugins and addins with this installer's SSH tab or by hand.</li>
+    <li><b>What the stick does:</b>
+      <ul>
+        <li>Turns <b>SSH</b> on (a key you give, or a password).</li>
+        <li>Puts back any <b>addins</b> you already installed.</li>
+      </ul></li>
+    <li><b>How it works:</b> MPC OS has its own stock "USB script" reader, built in by Akai (not a security hole). A stick with the right files on it makes MPC ask one on-screen question, then run a script as root. <i>Nothing happens until you confirm that prompt on the device's own screen.</i> The check the reader needs depends on your device's firmware, so this reads your own stock update image once (nothing from it is kept or sent anywhere).</li>
+    <li><b>Works on:</b> Gen1 MPC (Live, One, X, Key), Force and Gen2 (Live III, One G2, Key G2, XL), <b>but only on MPC OS up to 3.9.1</b>.
+      <div class="callout"><i>Akai closed this route in MPC OS 3.10. A stick built here will not work on MPC OS 3.10 or later: there, use the MPC OS 3.10.1 Plugin Manager stick instead.</i></div></li>
+    <li><b>Gen2 devices specifically:</b> their storage can't be made to remember changes the way Gen1 and Force can, so SSH and the addins' settings are undone by every reboot. <i>Reinsert the stick and confirm the prompt again after each restart.</i></li>
+  </ul>
 </section>
 <section id="st1">
   <h2><span class="n">1</span>Firmware</h2>
-  <p class="sub">This reads your device's own stock Akai update image to work out a one-time check it needs (nothing from this image is kept or sent anywhere). Use the exact image for your device: Gen1 MPC, Force, or Gen2 (Live III, One G2, Key(s) G2). <a href="https://www.akaipro.com/downloads-and-support/downloads/firmware/mpc/" target="_blank" rel="noopener">Get it from Akai</a> if you don't have it already, then point this at the downloaded file.</p>
+  <p class="sub">This reads your device's own stock Akai update image to work out a one-time check it needs (nothing from this image is kept or sent anywhere). Use the exact image for your device: Gen1 MPC, Force, or Gen2 (Live III, One G2, Key G2, XL). <a href="https://www.akaipro.com/downloads-and-support/downloads/firmware/mpc/" target="_blank" rel="noopener">Get it from Akai</a> if you don't have it already, then point this at the downloaded file.</p>
   <div class="row">
     <label class="f">Path to the firmware file (.img, or the MPC executable from one)<input id="st-fw" type="text" placeholder="e.g. /home/you/Downloads/MPC-3.9.1-Gen2-update.img" spellcheck="false"></label>
     <button id="st-fw-browse" type="button">Browse…</button>
@@ -218,23 +402,19 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 </section>
 
 <section id="st2" class="off">
-<details id="dst2" class="collapse">
-  <summary><h2><span class="n">2</span>Advanced: SSH access (optional)</h2><span class="hint">Show</span></summary>
-  <p class="sub"><b>Most people can skip this.</b> It only matters if you also want an ordinary SSH login on this device, separate
-  from the one-time install below (which happens either way). Leave it on "None" unless you know you want this.</p>
+  <h2><span class="n">2</span>SSH login</h2>
+  <p class="sub">A key is safer and is what to pick unless you know otherwise: it only adds a key on top of what is already
+  there. Pick one.</p>
   <div class="row">
     <label class="f">
       <span style="display:flex;flex-wrap:wrap;gap:16px;text-transform:none;letter-spacing:0;font:400 15px var(--text);color:var(--fg)">
-        <label><input type="radio" name="st-sshmode" id="st-ssh-none" checked> None (recommended)</label>
-        <label><input type="radio" name="st-sshmode" id="st-ssh-paste"> Use my public key</label>
+        <label><input type="radio" name="st-sshmode" id="st-ssh-paste" checked> Use my public key</label>
         <label><input type="radio" name="st-sshmode" id="st-ssh-gen"> Generate a new key</label>
         <label><input type="radio" name="st-sshmode" id="st-ssh-pw"> Set a password instead</label>
       </span>
     </label>
   </div>
-  <p class="small">A key doesn't weaken your device's login: it only adds a key, on top of what's already there. On a device whose
-  root filesystem can't be made writable (most Gen2 units), it lasts until the next reboot — reinsert the stick to redo it.</p>
-  <label class="f" id="st-sshpaste-wrap" hidden>Public key (the line from your id_ed25519.pub or similar)<input id="st-sshpaste" type="text" placeholder="ssh-ed25519 AAAA... you@host" spellcheck="false"></label>
+  <label class="f" id="st-sshpaste-wrap">Public key (the line from your id_ed25519.pub or similar)<input id="st-sshpaste" type="text" placeholder="ssh-ed25519 AAAA... you@host" spellcheck="false"></label>
   <div id="st-sshgen-wrap" hidden>
     <p class="msg ok" id="st-sshgen-warn"><b>Shown once.</b> Save this private key now (e.g. as <code>~/.ssh/id_mpc</code>, <code>chmod 600</code>); the app does not keep a copy.</p>
     <pre class="log" id="st-sshgen-priv"></pre>
@@ -242,22 +422,17 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   </div>
   <div id="st-sshpw-wrap" hidden>
     <p class="msg err"><b>Not recommended.</b> A password can be guessed or intercepted; a key can't. This also turns on
-    password login for root over SSH, where before only a key would have worked — anyone who learns this password gets a
-    root shell on your device. Only works on a device whose root can be made writable (most Gen1/Force units); refused
-    outright on most Gen2 units, which have no writable place to keep it.</p>
+    password login for root over SSH, where before only a key would have worked: anyone who learns this password gets a
+    root shell on your device. Only works on a device whose root can be made writable (most Gen1/Force units).
+    <b>Gen2 needs a key</b> (Live III, One G2, Key G2, XL): their root is read-only, so a password can't be kept and the
+    stick's SSH step fails.</p>
+    <p class="msg err" id="st-gen2-warn" hidden><b>This firmware looks like a Gen2 one.</b> A password stick can't work on it, so the installer won't build one. Use a key.</p>
     <label class="f">Password<input id="st-sshpw" type="password" autocomplete="new-password" spellcheck="false"></label>
   </div>
-</details>
-</section>
-
-<section id="st3" class="off">
-  <h2><span class="n">3</span>What to install</h2>
-  <p class="sub">Catalog plugin IDs, one or more, comma-separated. The plugin manager (default) then lets you browse and install more from the MPC screen itself.</p>
-  <label class="f">Catalog IDs<input id="st-install" type="text" value="plugin-manager" spellcheck="false"></label>
 </section>
 
 <section id="st4" class="off">
-  <h2><span class="n">4</span>Build the stick</h2>
+  <h2><span class="n">3</span>Build the stick</h2>
   <p class="sub">Writes the stick's files to the folder you pick. Point it straight at a mounted FAT32/exFAT USB stick's top level (pick one below, or Browse to it) and there's nothing left to copy -- otherwise, copy everything in the folder (hidden files too) to the root of a stick afterward. Either way: insert the stick into the device and confirm the prompt there.</p>
   <div id="st-drives"></div>
   <div class="row">
@@ -267,8 +442,10 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   </div>
   <p class="msg" id="st-buildmsg" role="status" aria-live="polite"></p>
 </section>
+</details>
 </div>
 
+</div>
 <footer>Community-provided software. Installing runs a script as root on your device and edits MPC's settings (a backup is made first). Downloads are checked against the catalog's checksums before anything is copied.</footer>
 </div>
 
@@ -283,6 +460,7 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   <h3 id="bdlgtitle">Choose a folder</h3>
   <p class="small" id="bdlgpath" style="word-break:break-all"></p>
   <p class="msg" id="bdlgmsg" role="status" aria-live="polite"></p>
+  <div id="bdlgdrives" class="small" hidden></div>
   <ul class="list" id="bdlglist" style="max-height:320px;overflow:auto"></ul>
   <div class="actions"><button id="bdlgcancel">Cancel</button><button id="bdlgup">Up a level</button><button class="primary" id="bdlgpick">Use this folder</button></div>
 </dialog>
@@ -297,7 +475,7 @@ function text(el, s) { el.textContent = s; }
 function api(path, body, raw) {
   var o = { headers: { "X-MPC-Token": T } };
   if (body !== undefined) { o.method = "POST"; if (raw) o.body = body; else { o.headers["Content-Type"] = "application/json"; o.body = JSON.stringify(body); } }
-  return fetch(path, o).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ("HTTP " + r.status)); return j; }); });
+  return fetch(path, o).then(function (r) { return r.json().then(function (j) { if (!r.ok) { var e = new Error(j.error || ("HTTP " + r.status)); e.status = r.status; throw e; } return j; }); });
 }
 function msg(el, s, cls) { text(el, s || ""); el.className = "msg" + (cls ? " " + cls : ""); }
 function gb(kb) { return kb >= 1048576 ? (kb / 1048576).toFixed(1) + " GB" : Math.round(kb / 1024) + " MB"; }
@@ -306,14 +484,24 @@ function el(tag, cls, t) { var e = document.createElement(tag); if (cls) e.class
 
 function setConnected(c, info, problems) {
   S.connected = c; S.problems = problems || []; S.libc = c && info ? (info.libc || "") : ""; S.arch = c && info ? (info.arch || "") : "";
-  $("s2").classList.toggle("off", !c); $("s3").classList.toggle("off", !c); $("s4").classList.toggle("off", !c); $("s5").classList.toggle("off", !c); $("s6").classList.toggle("off", !c); $("s7").classList.toggle("off", !c);
+  S.device = c && info && /MPC Sample/.test(info.settings || "") ? "mpc-sample" : "";   /* as DeviceInfo.Device in device.go */
+  $("mig").classList.toggle("off", !c); $("s2").classList.toggle("off", !c); $("s3").classList.toggle("off", !c); $("s4").classList.toggle("off", !c); $("s5").classList.toggle("off", !c); $("s6").classList.toggle("off", !c); $("s7").classList.toggle("off", !c); $("sf").classList.toggle("off", !c);
   S.patches = null; drawPatches();
+  $("s7").hidden = !!(c && info && info.vst2);   /* device patches: not re-tested on MPC OS 3.10.1, so not offered there */
+  $("mig").hidden = !(c && info && info.vst2 && info.legacyCount);   /* only on 3.10.1 with plugins installed the old way */
+  if (!c) $("devline").hidden = true;
   if (c) {
     var n = (info.installed || []).length;
     S.roots = info.roots || []; S.drives = info.drives || []; var pr = S.roots.filter(function (r) { return r.primary && !r.noExec; })[0] || S.roots.filter(function (r) { return !r.noExec; })[0] || S.roots[0]; S.root = pr ? pr.path : "";
     var places = S.roots.map(function (r) { return r.label + " (" + (r.fs ? r.fs + ", " : "") + gb(r.freeKB) + " free)"; }).join("; ");
     var m = "Connected to " + info.host + " (" + (info.arch || "?") + "). " + n + " plugin folder" + (n === 1 ? "" : "s") + " found. Plugin locations: " + (places || info.synths) + ". Device key " + info.fingerprint + ".";
     if (S.problems.length) msg($("connmsg"), m + " Cannot install here: " + S.problems.join("; ") + ".", "err"); else msg($("connmsg"), m, "ok");
+    S.vst2 = info.vst2 || "";
+    var dl = [info.model || (info.arch === "aarch64" ? "Gen2 MPC" : "MPC or Force"), info.mpcOS ? "MPC OS " + info.mpcOS : "",
+      S.vst2 === "on" ? "External Plugin Support on" : S.vst2 === "off" ? "External Plugin Support OFF" : "", info.legacyCount ? info.legacyCount + " plugin" + (info.legacyCount === 1 ? "" : "s") + " to move" : "",
+      info.manager ? "Plugin Manager " + info.manager : "no Plugin Manager"].filter(Boolean).join("  \u00b7  ");
+    text($("devline"), dl); $("devline").hidden = false;
+    if (S.vst2 === "off") msg($("connmsg"), "External Plugin Support is off: on the MPC open Preferences > Enhancements, turn it on, wait a few seconds, restart MPC, then connect again.", "err");
     drawWhere(); loadCatalog(); loadDevice(); loadUnreg(); loadBackups();
   }
   refresh();
@@ -394,13 +582,28 @@ function osTagFor(p) {
   var g = p.os_compat || []; if (g.indexOf("2.x") < 0 || !p.tested_2x) return null;
   var t = el("span", "tag", "MPC OS 2.x tested"); t.title = "Tested on an MPC OS 2.x unit; its skin and library were also checked against MPC OS 2.15.1's own skins and glibc. Works on MPC OS 3.x too."; return t;
 }
+var DEVICE_NAMES = { "mpc-sample": "MPC Sample" };   /* catalog device ids (registry "devices") */
+function devicesOf(p) { return (p.devices || []).map(function (d) { return DEVICE_NAMES[d] || d; }).join(" and "); }
 function osNote(p) {   /* {level, text} when this plugin will not work as expected on the connected device, else null */
+  if (S.connected && (p.devices || []).length && p.devices.indexOf(S.device) < 0) return { level: "err", text: p.name + " is only for the " + devicesOf(p) + ", so it cannot be installed on this device." };
   if (S.arch === "aarch64" && !p.gen2) return { level: "err", text: p.name + " has no Gen2 (aarch64) build yet, so it cannot be installed on this device." };
   if (!S.libc) return null;
   if (p.max_glibc && vgt(p.max_glibc, S.libc)) return { level: "err", text: p.name + " needs glibc " + p.max_glibc + " but this device has " + S.libc + ": MPC will list it but it will not load." };
   var g = p.os_compat || [];
   if (g.length && g.indexOf("2.x") < 0 && vgt("2.34", S.libc)) return { level: "warn", text: p.name + " is made for MPC OS 3.x. This device looks like MPC OS 2.x (glibc " + S.libc + "), so its touchscreen page may stay empty; it still works from the Q-Links." };
   return null;
+}
+/* What else a plugin needs and, for an addin, the installed or ticked addins that replace some of the same MPC functions where one of
+   the two may not pass the calls on (catalog shares_hooks). Notes only, never blocks. */
+function needNotes(p) {
+  var n = [];
+  if (!p) return n;
+  if (p.requires) n.push({ level: "warn", text: p.name + " needs: " + p.requires });
+  (p.shares_hooks || []).forEach(function (o) {
+    var c = S.cat.filter(function (x) { return x.id === o.id; })[0];
+    if (c && (c.installed || S.pickCat[c.id])) n.push({ level: "warn", text: p.name + " and " + o.name + " replace some of the same MPC functions (" + o.symbols.join(", ") + "), and one of them may not pass the calls on: together, one may stop working. If it does, remove one of them." });
+  });
+  return n;
 }
 function drawCat() {
   var ul = $("cat"); ul.textContent = "";
@@ -414,9 +617,11 @@ function drawCat() {
     if (p.update) b.appendChild(el("span", "tag up", "update: v" + p.installedVersion + " → v" + p.version));
     if (p.defer === false) { var dt = el("span", "tag", "restarts MPC itself"); dt.title = "This release has an older installer that restarts MPC on its own, so it adds a restart to the batch."; b.appendChild(dt); }
     var ot = p.kind === "addin" ? null : osTagFor(p); if (ot) b.appendChild(ot);
-    if (p.gen2) { var gt = el("span", "tag", "Gen2"); gt.title = "Also built for Gen2 (aarch64) MPC devices; the app installs the right zip for the connected device."; b.appendChild(gt); }
+    if ((p.devices || []).length) { var dt = el("span", "tag", devicesOf(p) + " only"); dt.title = "Only for the " + devicesOf(p) + ": the app won't install it on other MPCs."; b.appendChild(dt); }
+    else if (p.gen2) { var gt = el("span", "tag", "Gen2"); gt.title = "Also built for Gen2 (aarch64) MPC devices; the app installs the right zip for the connected device."; b.appendChild(gt); }
     t.appendChild(b); t.appendChild(el("span", "d", "v" + p.version + " by " + p.author + " · " + mb(p.size) + " · " + p.summary));
     var on = osNote(p); if (on) t.appendChild(el("span", "d osn " + on.level, on.text));
+    needNotes(p).forEach(function (nn) { t.appendChild(el("span", "d osn " + nn.level, nn.text)); });
     var lab = el("label"); lab.htmlFor = cb.id; lab.style.display = "contents"; lab.appendChild(t);
     li.appendChild(cb); li.appendChild(lab); ul.appendChild(li);
   });
@@ -487,7 +692,61 @@ function drawUnreg() {
   $("regbadge").hidden = !n; text($("regbadge"), n + " waiting");
 }
 function loadDevice() {
-  return api("/api/device").then(function (j) { S.dev = j.plugins; if (j.roots) { S.roots = j.roots; } drawDev(); refresh(); }).catch(function (e) { S.dev = []; drawDev(); msg($("rmresult"), e.message, "err"); });
+  return api("/api/device").then(function (j) { S.dev = j.plugins; if (j.roots) { S.roots = j.roots; } drawDev(); drawFiles(); refresh(); }).catch(function (e) { S.dev = []; drawDev(); drawFiles(); msg($("rmresult"), e.message, "err"); });
+}
+
+var UF_TAG = { ok: "OK", maybe: "Looks right", bad: "Not usable", ignored: "Ignored" };
+function ufGroups() {
+  var out = [];
+  S.dev.forEach(function (p) { (p.userFiles || []).forEach(function (g) { if (p.known) out.push({ p: p, g: g }); }); });
+  return out;
+}
+function drawFiles() {
+  var gs = ufGroups(), sec = $("sf"), body = $("ufbody");
+  sec.hidden = !gs.length || !S.connected;
+  body.textContent = "";
+  gs.forEach(function (x) {
+    var box = el("div", "uf"), q = "root=" + encodeURIComponent(x.p.root) + "&folder=" + encodeURIComponent(x.p.folder) + "&group=" + encodeURIComponent(x.g.path);
+    box.appendChild(el("h3", null, (x.p.name || x.p.folder) + " · " + x.g.label));
+    if (x.g.description) box.appendChild(el("p", "small", x.g.description));
+    if (x.g.hint) box.appendChild(el("p", "small", x.g.hint));
+    var ul = el("ul", "list"), status = el("p", "msg"), pick = document.createElement("input");
+    pick.type = "file"; pick.multiple = true;
+    var up = el("button", "primary", "Check and copy to the device");
+    function list() {
+      text(status, "Reading the folder on the device…");
+      api("/api/userfiles?" + q).then(function (j) {
+        ul.textContent = "";
+        (j.files || []).filter(function (f) { return f.status !== "ignored"; }).forEach(function (f) {
+          var li = el("li"), t = el("div", "t"), b = el("b", null, f.name);
+          b.appendChild(el("span", "tag " + f.status, (f.label ? f.label + " · " : "") + UF_TAG[f.status]));
+          t.appendChild(b); t.appendChild(el("span", "d", mb(f.size) + (f.message ? " · " + f.message : "")));
+          var del = el("button", null, "Delete");
+          del.addEventListener("click", function () {
+            if (!confirm("Delete " + f.name + " from the device?")) return;
+            api("/api/userfiles/delete", { root: x.p.root, folder: x.p.folder, group: x.g.path, name: f.name }).then(list).catch(function (e) { msg(status, e.message, "err"); });
+          });
+          li.appendChild(t); li.appendChild(del); ul.appendChild(li);
+        });
+        if (!ul.children.length) ul.appendChild(el("li", "small", "Nothing here yet."));
+        msg(status, j.ok + j.maybe ? "" : "No usable file yet: " + x.p.name + " will say so on its screen until you add one.", j.ok + j.maybe ? "" : "err");
+      }).catch(function (e) { msg(status, e.message, "err"); });
+    }
+    up.addEventListener("click", function () {
+      if (!pick.files.length) { msg(status, "Choose one or more files first.", "err"); return; }
+      var fd = new FormData(); fd.append("root", x.p.root); fd.append("folder", x.p.folder); fd.append("group", x.g.path);
+      for (var i = 0; i < pick.files.length; i++) fd.append("file", pick.files[i], pick.files[i].name);
+      up.disabled = true; msg(status, "Checking and copying…");
+      api("/api/userfiles/upload", fd, true).then(function (j) {
+        up.disabled = false; pick.value = "";
+        var bad = (j.files || []).filter(function (f) { return f.status === "bad" || f.status === "ignored"; });
+        list();
+        setTimeout(function () { msg(status, (j.files || []).map(function (f) { return f.name + ": " + (UF_TAG[f.status] || f.status) + (f.label ? " (" + f.label + ")" : "") + (f.message ? ". " + f.message : ""); }).join("\n"), bad.length ? "err" : "ok"); }, 600);
+      }).catch(function (e) { up.disabled = false; msg(status, e.message, "err"); });
+    });
+    box.appendChild(ul); box.appendChild(pick); var row = el("div", "row"); row.appendChild(up); box.appendChild(row); box.appendChild(status);
+    body.appendChild(box); list();
+  });
 }
 function devKey(p) { return p.root + "\u0000" + p.folder; }
 function drawDev() {
@@ -535,7 +794,7 @@ function drawPatches() {
       if (back && p.reversible) bar.appendChild(patchButton(p, "uninstall"));
       li.appendChild(bar);
     }
-    if (p.docs) { var a = el("a", null, "Guide"); a.href = "https://github.com/sd88me/mpc-vst-plugins/blob/main/" + p.docs.replace(/^\/+/, ""); a.target = "_blank"; a.rel = "noopener"; a.style.color = "var(--accent)"; li.appendChild(a); }
+    if (p.docs) { var a = el("a", null, "Guide"); a.href = "https://github.com/open-mpc/mpc-vst-plugins/blob/main/" + p.docs.replace(/^\/+/, ""); a.target = "_blank"; a.rel = "noopener"; a.style.color = "var(--accent)"; li.appendChild(a); }
     ul.appendChild(li);
   });
 }
@@ -636,13 +895,20 @@ drop.addEventListener("drop", function (e) { upload(e.dataTransfer.files); });
 function startInstall() {
   var s = selection();
   api("/api/plan", s).then(function (p) {
-    var names = p.items.map(function (i) { return i.title + " " + i.version; }).join(", ");
+    var names = p.items.filter(function (i) { return !i.why; }).map(function (i) { return i.title + " " + i.version; }).join(", ");
+    var deps = p.items.filter(function (i) { return i.why; });
     var r = p.maybeMore ? " MPC will restart at least once, and once more for each plugin with an older installer that restarts MPC by itself (the log shows which)."
           : p.restarts > 1 ? " MPC will restart " + p.restarts + " times, because some of the installers restart it themselves." : " MPC will restart once.";
     S.mode = "install"; $("dlgsave").hidden = false; text($("dlgtitle"), "Install on your device?"); text($("yes"), "Install");
-    var notes = s.catalog.map(function (id) { return osNote(S.cat.filter(function (x) { return x.id === id; })[0]); }).filter(Boolean);
+    var notes = [];
+    s.catalog.forEach(function (id) { var c = S.cat.filter(function (x) { return x.id === id; })[0]; notes.push(osNote(c)); notes = notes.concat(needNotes(c)); });
+    notes = notes.filter(Boolean);
+    (p.notes || []).forEach(function (t) { notes.push({ level: "warn", text: t + "." }); });
+    (p.refused || []).forEach(function (t) { notes.push({ level: "err", text: t + "." }); });
+    S.force = (p.refused || []).length > 0;
     if (notes.some(function (n) { return n.level === "err"; })) text($("yes"), "Install anyway");
-    text($("dlgtxt"), "About to install: " + names + (S.roots.length > 1 ? " to " + rootLabelOf(S.root) : "") + "." + r + (notes.length ? " " + notes.map(function (n) { return (n.level === "err" ? "Warning: " : "Note: ") + n.text; }).join(" ") : ""));
+    text($("dlgtxt"), "About to install: " + names + (S.roots.length > 1 ? " to " + rootLabelOf(S.root) : "") + "." +
+      (deps.length ? " Also installing, for the dependencies: " + deps.map(function (i) { return i.title + " " + i.version + " (" + i.why + ")"; }).join("; ") + "." : "") + r + (notes.length ? " " + notes.map(function (n) { return (n.level === "err" ? "Warning: " : "Note: ") + n.text; }).join(" ") : ""));
     $("dlg").showModal();
   }).catch(function (e) { msg($("result"), e.message, "err"); });
 }
@@ -660,7 +926,7 @@ $("resetf").addEventListener("click", function () {
 $("no").addEventListener("click", function () { $("dlg").close(); });
 function chosenDev() { return S.dev.filter(function (p) { return S.pickDev[devKey(p)] && p.known; }); }
 $("rm").addEventListener("click", function () {
-  var ch = chosenDev(); S.mode = "remove"; $("dlgsave").hidden = false;
+  var ch = chosenDev(); S.mode = "remove"; S.force = false; $("dlgsave").hidden = false;
   text($("dlgtitle"), "Remove from your device?"); text($("yes"), "Remove");
   var plugs = ch.filter(function (p) { return !p.addin; }), adds = ch.filter(function (p) { return p.addin; });
   text($("dlgtxt"), "About to remove: " + ch.map(function (p) { return p.name || p.folder; }).join(", ") + "." +
@@ -700,11 +966,18 @@ $("yes").addEventListener("click", function () {
   if (S.mode === "remove") {
     var items = chosenDev().map(function (p) { return { root: p.root, folder: p.folder }; });
     S.running = true; refresh(); msg($("rmresult"), "Working…"); var rl = $("rmlog"); rl.hidden = false; rl.textContent = "";
-    api("/api/remove", { items: items, confirm: true }).then(function () { poll(0, $("rmlog"), $("rmresult"), "Done. MPC is starting again: the plugins are gone from its list."); })
-      .catch(function (e) { S.running = false; refresh(); msg($("rmresult"), e.message, "err"); });
+    api("/api/remove", { items: items, confirm: true, force: !!S.force }).then(function () { poll(0, $("rmlog"), $("rmresult"), "Done. MPC is starting again: the plugins are gone from its list."); })
+      .catch(function (e) {
+        S.running = false; refresh(); rl.hidden = true;
+        if (e.status === 409 && !S.force && / needs /.test(e.message)) { // something installed still needs it: ask again
+          msg($("rmresult"), ""); S.force = true; text($("dlgtitle"), "Remove anyway?"); text($("yes"), "Remove anyway");
+          text($("dlgtxt"), "Warning: " + e.message.replace(/ Nothing was changed.*$/, "") + " It may stop working."); $("dlg").showModal(); return;
+        }
+        msg($("rmresult"), e.message, "err");
+      });
     return;
   }
-  var s = selection(); s.confirm = true;
+  var s = selection(); s.confirm = true; s.force = !!S.force;
   S.running = true; refresh(); msg($("result"), "Working…"); var log = $("log"); log.hidden = false; log.textContent = "";
   api("/api/install", s).then(function () { poll(0, $("log"), $("result"), "Done. MPC is starting again: the new plugins are in the plugin list."); }).catch(function (e) { S.running = false; refresh(); msg($("result"), e.message, "err"); });
 });
@@ -719,6 +992,28 @@ function poll(since, log, resultEl, doneText) {
   }).catch(function (e) { setTimeout(function () { poll(since, log, resultEl, doneText); }, 1500); });
 }
 
+/* MPC OS 3.10.1: copy the installed plugin folders into VST2 Plugins on the device (POST /api/vst2migrate, a device job). */
+function migRun(apply) {
+  if (apply && !confirm("Move: MPC stops while your plugins are copied, then starts again. Save your project first. Go on?")) return;
+  $("mig-check").disabled = $("mig-move").disabled = true;
+  $("mig-log").hidden = false; $("mig-log").textContent = "";
+  msg($("mig-msg"), apply ? "Moving…" : "Checking…");
+  api("/api/vst2migrate", { apply: apply }).then(function () { migPoll(0); })
+    .catch(function (e) { $("mig-check").disabled = $("mig-move").disabled = false; msg($("mig-msg"), e.message, "err"); });
+}
+function migPoll(since) {
+  api("/api/job?since=" + since).then(function (j) {
+    var log = $("mig-log");
+    if (j.lines.length) { log.textContent += j.lines.join("\n") + "\n"; log.scrollTop = log.scrollHeight; }
+    if (j.state === "running") { setTimeout(function () { migPoll(j.next); }, 600); return; }
+    $("mig-check").disabled = $("mig-move").disabled = false;
+    msg($("mig-msg"), j.result, j.state === "done" ? "ok" : "err");
+    if (j.state === "done") { loadDevice(); }
+  }).catch(function () { setTimeout(function () { migPoll(since); }, 1500); });
+}
+$("mig-check").addEventListener("click", function () { migRun(false); });
+$("mig-move").addEventListener("click", function () { migRun(true); });
+
 /* --- USB stick mode: independent of the device connection above. --- */
 var ST = { scanHandle: "", running: false, drives: [] };
 function setMode(m) {
@@ -729,6 +1024,121 @@ function setMode(m) {
 }
 $("mode-install").addEventListener("click", function () { setMode("install"); });
 $("mode-stick").addEventListener("click", function () { setMode("stick"); });
+/* the start cards: open the right part of the page */
+function openPart(id) { var d = $(id); if (d && d.tagName === "DETAILS") d.open = true; if (d) d.scrollIntoView({ behavior: "smooth", block: "start" }); }
+/* The start: a few questions (model, MPC OS, Wi-Fi or SSH), then the plan for that answer. Its button opens the one part of
+ * the page below that does it (focus), the rest stays behind "All tools". Answers are kept in this browser only. */
+var WZ = { gen: "", model: "", os: "", net: "", hist: [] };
+var WZ_SCREENS = ["wz-model", "wz-os", "wz-ssh", "wz-plan"], WZ_STEP = { "wz-model": 1, "wz-os": 2, "wz-ssh": 3, "wz-plan": 4 };
+function wzSave() { try { localStorage.setItem("openmpc-setup", JSON.stringify({ gen: WZ.gen, model: WZ.model, os: WZ.os, net: WZ.net })); } catch (e) {} }
+function wzShow(id, back) {
+  var cur = WZ_SCREENS.filter(function (x) { return !$(x).hidden; })[0];
+  if (!back && cur && cur !== id) WZ.hist.push(cur);
+  WZ_SCREENS.forEach(function (x) { $(x).hidden = x !== id; });
+  Array.prototype.forEach.call($("wiz-dots").children, function (d, i) { d.className = i < WZ_STEP[id] ? "on" : ""; });
+}
+function showSetup() { $("toolsview").hidden = true; $("wiz").hidden = false; window.scrollTo(0, 0); }
+/* the existing parts: mode "stick" or "install"; part: the details/section to open alone ("" = everything) */
+function showTools(mode, part) {
+  $("wiz").hidden = true; $("toolsview").hidden = false;
+  $("to-setup").hidden = !WZ.os; $("to-all").hidden = !part;
+  $("modetabs").hidden = !!part;
+  $("v2").classList.remove("fromwiz");
+  setMode(mode);
+  Array.prototype.forEach.call(document.querySelectorAll("#stick-mode > details"), function (d) { d.hidden = !!part && d.id !== part; });
+  if (part) openPart(part); else window.scrollTo(0, 0);
+}
+function wzOpt(label, small, fn) {
+  var b = el("button", "opt"); b.type = "button";
+  var t = el("span"); t.appendChild(el("b", null, label)); t.appendChild(el("small", null, small)); b.appendChild(t);
+  b.addEventListener("click", fn); return b;
+}
+function goV2(arch, plugins) {   /* the VST2 Plugins stick for this MPC: the build is known from the model */
+  Array.prototype.forEach.call(document.getElementsByName("v2-arch"), function (r) { r.checked = r.value === arch; });
+  v2Draw(); $("v2-more").open = !!plugins;
+  var f = $("v2-for"); f.textContent = ""; f.appendChild(el("span", null, "For your " + WZ.model + " (the " + (arch === "aarch64" ? "Gen2" : "Gen1") + " build)."));
+  var c = el("button", "linkbtn", "Change"); c.type = "button"; c.onclick = function () { WZ.hist = []; showSetup(); wzShow("wz-model", true); }; f.appendChild(c);
+  showTools("stick", "v2"); $("v2").classList.add("fromwiz");
+}
+function goSSH() { showTools("install", ""); openPart("s1"); $("host").focus({ preventScroll: true }); }
+function goL1() {
+  var r = document.querySelector('input[name="l1-os"][value="old"]'); r.checked = true; r.dispatchEvent(new Event("change"));
+  $("l1-osq").hidden = true; showTools("stick", "l1");
+}
+function goSSHStick() { showTools("stick", "dadv"); }
+function wzPlan() {
+  var arch = WZ.gen === "aarch64" ? "aarch64" : "armv7", force = WZ.gen === "force", P;
+  var HERE = "on this computer", MPC = "on the MPC";
+  if (WZ.os === "2x") P = { t: "MPC OS 2.x: install over Wi-Fi", s: "The Plugin Manager and its stick need MPC OS 3.x. On 2.x this app installs plugins over SSH (you need root SSH access to the MPC). Pick plugins marked MPC OS 2.x and 3.x.",
+    steps: [["Connect with the MPC's IP address", HERE], ["Pick plugins marked MPC OS 2.x and 3.x", HERE, "The app warns you before installing a plugin made only for 3.x."], ["Install", HERE, "Your settings are backed up first, then MPC restarts once with the new plugins."]],
+    go: "Connect", fn: goSSH,
+    alts: [["I don't have SSH yet", "A stick that turns SSH on, built from your own firmware file (not yet tested on MPC OS 2.x)", goSSHStick]] };
+  else if (WZ.os === "new") P = { t: "Put the Plugin Manager on your MPC", s: "Once it is on a track, you install everything else from its screen, or from your phone or computer.",
+    steps: [["Menu > Preferences > Enhancements: tick Enable Enhancements and External Plugin Support, accept the warning, wait a few seconds, then restart", MPC, "MPC now looks for plugins in folders called VST2 Plugins."],
+            ["Put the Plugin Manager in a VST2 Plugins folder on the MPC. Pick a way below", HERE, "MPC lists it in its plugin browser. On a stick or card that is as soon as you plug it in."],
+            ["Press Menu, add a new Plugin track, tap its plugin slot and browse to External VST Plugins > OpenMPC > Plugin Manager", MPC, "Its screen lists the catalog. Install from there, or open the web address on its status line on your phone or computer (same Wi-Fi)."]], go: "", fn: null,
+    ways: [["Over Wi-Fi", "Developer mode on", [["Turn on Developer mode on the MPC and note its IP address", MPC, "This computer can now reach the MPC over Wi-Fi."], ["Connect from this computer and install the Plugin Manager", HERE, "MPC restarts with it. You can turn Developer mode off again afterwards."]], "Install over Wi-Fi", goSSH],
+           ["With a USB cable", "Controller Mode", /Live III|XL/.test(WZ.model) ? [   /* only these mount their internal drives (Akai's support articles) */
+             ["Connect the MPC to this computer with a USB cable", MPC], ["Menu, the computer icon: Controller Mode", MPC, "Two drives appear on this computer: MPC User (the MPC's internal drive) and MPC Content. On Windows they appear only once Akai's MPC USB driver is installed (from akaipro.com)."],
+             ["Write the Plugin Manager onto the MPC User drive, eject it, then tap Standalone on the MPC and confirm", HERE, "If the Plugin Manager isn't in the plugin browser yet, restart the MPC: the internal drive is read at start-up."]]
+           : [["Put an SD card or USB drive in the MPC and connect the MPC to this computer", MPC, "This MPC's internal drive doesn't show on a computer, only a card or drive in it."], ["Menu, the computer icon: Controller Mode", MPC, "The card or drive appears on this computer like a USB stick."],
+             ["Write the Plugin Manager onto it, eject it, then tap Standalone on the MPC and confirm", HERE, "MPC finds the Plugin Manager on it. Leave the card or drive in."]], "Write the Plugin Manager", function () { goV2(arch, false); }],
+           ["With a USB stick or SD card", "", [["Write the Plugin Manager onto a stick or card", HERE], ["Plug it into the MPC", MPC, "No restart needed: the Plugin Manager shows up in the plugin browser within a few seconds. Leave it in: the plugin runs from there. Don't unplug it while a track uses the Plugin Manager: the plugin stops and its screen goes black until you plug it back in."]], "Write the Plugin Manager", function () { goV2(arch, false); }]],
+    alts: [["My MPC has no Wi-Fi", "Put plugins and their ROMs straight onto the stick", function () { goV2(arch, true); }]] };
+  else if (WZ.net === "nossh") P = { t: "Plugin Manager stick", s: "A stick that installs the Plugin Manager: you confirm one prompt and MPC restarts with it.",
+    steps: [["Make the stick", HERE, "Use an empty USB stick."], ["Save your project, plug the stick into the MPC and choose Open on the prompt", MPC, "The stick installs the Plugin Manager and MPC restarts by itself. You can then unplug the stick."], ["Create a new Plugin track, tap its plugin slot and choose OpenMPC Plugin Manager from the plugin list", MPC, "Its screen lists the catalog. Install from there, or open the web address on its status line on your phone or computer (same Wi-Fi)."]],
+    go: "Make the stick", fn: goL1,
+    alts: [["I want SSH on my MPC", "A stick that turns SSH on, for installing from this computer", goSSHStick]] };
+  else P = { t: "Install over Wi-Fi", s: "Connect to the MPC from this computer, pick plugins, install.",
+    steps: [["Connect with the MPC's IP address", HERE], ["Pick plugins", HERE], ["Install", HERE, "Your settings are backed up first, then MPC restarts once with the new plugins."]],
+    go: "Connect", fn: goSSH, alts: [] };
+  text($("wz-for"), WZ.model + " \u00b7 MPC OS " + (WZ.os === "new" ? "3.10.1 or later" : WZ.os === "2x" ? "2.x" : "3.0 to 3.9.1"));
+  text($("wz-title"), P.t); text($("wz-sub"), P.s);
+  var ol = $("wz-steps"); ol.textContent = ""; ol.hidden = !P.steps.length;
+  function stepLi(x) { var li = el("li"), sp = el("span", null, x[0]); if (x[2]) sp.appendChild(el("em", "then", x[2])); li.appendChild(sp); li.appendChild(el("small", null, x[1])); return li; }
+  P.steps.forEach(function (x) { ol.appendChild(stepLi(x)); });
+  text($("wz-go"), P.go || ""); $("wz-go").onclick = P.fn; $("wz-go").hidden = !P.fn;
+  var wy = $("wz-ways"); wy.textContent = "";
+  (P.ways || []).forEach(function (w) {
+    var d = el("details", "way"), sm = el("summary"); sm.appendChild(el("b", null, w[0])); if (w[1]) sm.appendChild(el("small", null, " (" + w[1] + ")"));
+    d.appendChild(sm); var o = el("ol", "plan");
+    w[2].forEach(function (x) { o.appendChild(stepLi(x)); });
+    d.appendChild(o); var b = el("button", "primary", w[3]); b.type = "button"; b.onclick = w[4]; d.appendChild(b); wy.appendChild(d);
+  });
+  var al = $("wz-alts"); al.textContent = ""; $("wz-others").hidden = !P.alts.length; $("wz-others").open = false;
+  P.alts.forEach(function (x) { al.appendChild(wzOpt(x[0], x[1], x[2])); });
+  wzSave(); wzShow("wz-plan");
+}
+Array.prototype.forEach.call(document.querySelectorAll("#wz-model .opt"), function (b) {
+  b.addEventListener("click", function () {
+    WZ.gen = b.dataset.gen; WZ.model = b.textContent;
+    text($("wz-nossh-d"), "A USB stick installs the Plugin Manager for you");
+    wzShow("wz-os");
+  });
+});
+Array.prototype.forEach.call(document.querySelectorAll("#wz-os .opt[data-os]"), function (b) {
+  b.addEventListener("click", function () {
+    WZ.os = b.dataset.os;
+    if (WZ.os === "new" || WZ.os === "2x") { WZ.net = ""; wzPlan(); } else wzShow("wz-ssh");
+  });
+});
+$("wz-unsure").addEventListener("click", function () { $("wz-oshelp").hidden = false; });
+Array.prototype.forEach.call(document.querySelectorAll("#wiz .opt[data-net]"), function (b) {
+  b.addEventListener("click", function () { WZ.net = b.dataset.net; wzPlan(); });
+});
+Array.prototype.forEach.call(document.querySelectorAll("#wiz .wback"), function (b) {
+  b.addEventListener("click", function () { if (WZ.hist.length) wzShow(WZ.hist.pop(), true); });
+});
+$("wz-restart").addEventListener("click", function () { WZ.hist = []; WZ.net = ""; try { localStorage.removeItem("openmpc-setup"); } catch (e) {} wzShow("wz-model", true); });
+$("to-tools").addEventListener("click", function () { showTools(S.mode2 || "stick", ""); });
+$("to-all").addEventListener("click", function () { showTools(S.mode2 || "stick", ""); });
+$("to-setup").addEventListener("click", function () { $("l1-osq").hidden = false; showSetup(); });
+(function () {   /* a returning user lands on their plan */
+  var a = null; try { a = JSON.parse(localStorage.getItem("openmpc-setup") || "null"); } catch (e) {}
+  if (a && a.gen && a.os) { WZ.gen = a.gen; WZ.model = a.model || ""; WZ.os = a.os; WZ.net = a.net || ""; WZ.hist = ["wz-model"];
+    if (WZ.os === "old" && WZ.net !== "nossh" && WZ.net !== "ssh") { WZ.net = ""; WZ.hist.push("wz-os"); wzShow("wz-ssh"); } else wzPlan(); }
+  else wzShow("wz-model", true);
+})();
 
 var BR = { mode: "dir", target: null, dir: "" };
 function openBrowse(mode, target, start) {
@@ -780,7 +1190,7 @@ function scanMsg(s, cls, spin) {
 $("st-scan").addEventListener("click", function () {
   var fw = $("st-fw").value.trim();
   if (!fw) { scanMsg("Enter the path to a firmware file first.", "err"); return; }
-  ST.running = true; ST.scanHandle = ""; $("st2").classList.add("off"); $("st3").classList.add("off"); $("st4").classList.add("off");
+  ST.running = true; ST.scanHandle = ""; $("st2").classList.add("off"); $("st4").classList.add("off");
   scanMsg("Scanning…", null, true); var log = $("st-scanlog"); log.hidden = false; log.textContent = "";
   api("/api/stick/scan", { Firmware: fw }).then(function () { stickPoll(0, log); })
     .catch(function (e) { ST.running = false; scanMsg(e.message, "err"); });
@@ -794,15 +1204,16 @@ function stickPoll(since, log) {
     if (j.state === "running") { setTimeout(function () { stickPoll(j.next, log); }, 600); return; }
     ST.running = false;
     if (j.state === "done") {
-      ST.scanHandle = j.result;
-      scanMsg("Found the salt. Set up SSH if you want it (most people don't need to), then build the stick below.", "ok");
-      $("st2").classList.remove("off"); $("st3").classList.remove("off"); $("st4").classList.remove("off");
+      ST.scanHandle = j.result; ST.gen2 = !!j.gen2;
+      $("st-gen2-warn").hidden = !ST.gen2;
+      scanMsg("Found the salt. Now choose how you want to log in over SSH, then build the stick below.", "ok");
+      $("st2").classList.remove("off"); $("st4").classList.remove("off");
     } else {
       scanMsg(j.result, "err");
     }
   }).catch(function (e) { setTimeout(function () { stickPoll(since, log); }, 1500); });
 }
-["st-ssh-none", "st-ssh-paste", "st-ssh-gen", "st-ssh-pw"].forEach(function (id) {
+["st-ssh-paste", "st-ssh-gen", "st-ssh-pw"].forEach(function (id) {
   $(id).addEventListener("change", function () {
     $("st-sshpaste-wrap").hidden = !$("st-ssh-paste").checked;
     $("st-sshpw-wrap").hidden = !$("st-ssh-pw").checked;
@@ -813,7 +1224,7 @@ function stickPoll(since, log) {
         $("st-sshgen-priv").textContent = k.private;
         $("st-sshgen-wrap").hidden = false;
         ST.genPub = k.public.trim();
-      }).catch(function (e) { msg($("st-buildmsg"), e.message, "err"); $("st-ssh-none").checked = true; });
+      }).catch(function (e) { msg($("st-buildmsg"), e.message, "err"); $("st-ssh-paste").checked = true; $("st-sshpaste-wrap").hidden = false; });
     }
   });
 });
@@ -832,15 +1243,135 @@ $("st-build").addEventListener("click", function () {
   if (!ST.scanHandle) { msg($("st-buildmsg"), "Scan the firmware first.", "err"); return; }
   var out = $("st-out").value.trim();
   if (!out) { msg($("st-buildmsg"), "Enter a folder to write the stick to.", "err"); return; }
-  var ids = $("st-install").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
-  msg($("st-buildmsg"), "Building…");
-  api("/api/stick/build", { ScanHandle: ST.scanHandle, Out: out, Install: ids, SSHPubKey: stickSSHKey(), SSHPassword: stickSSHPassword() })
+  var key = stickSSHKey(), pw = stickSSHPassword();
+  if (!key && !pw) { msg($("st-buildmsg"), "Give a public key, generate one, or set a password: SSH is what this stick is for.", "err"); return; }
+  if (pw && ST.gen2) { msg($("st-buildmsg"), "This firmware looks like a Gen2 one, which can't keep an SSH password. Use a key instead.", "err"); return; }
+  msg($("st-buildmsg"), "Building…");   /* SSH and addins only: the Plugin Manager has its own stick (the section above) */
+  api("/api/stick/build", { ScanHandle: ST.scanHandle, Out: out, SSHPubKey: key, SSHPassword: pw, WithManager: false })
     .then(function (r) {
       var where = stickOutIsAMountedDrive(out)
         ? "That's a mounted drive, so it's already on the stick -- just"
         : "Copy everything in " + r.out + " (hidden files too) to the root of a USB stick, then";
-      msg($("st-buildmsg"), "Wrote " + r.out + ". " + where + " insert it into the MPC/Force and confirm the prompt on the device.", "ok");
+      msg($("st-buildmsg"), "Wrote " + r.out + ". " + where + " insert it into the MPC/Force (MPC OS up to 3.9.1) and confirm the prompt on the device.", "ok");
     }).catch(function (e) { msg($("st-buildmsg"), e.message, "err"); });
+});
+
+/* MPC OS 3.10.1 plugin stick: catalog plugins into <drive>/VST2 Plugins (POST /api/vst2stick, a stick job). */
+var V2 = { cat: [], pick: { "plugin-manager-g2": true } };
+function v2Arch() { var r = document.querySelector('input[name="v2-arch"]:checked'); return r ? r.value : "armv7"; }
+function v2Fits(p) { return v2Arch() === "aarch64" ? !!(p.aarch64 || p.gen2 || p.gen2_only) : !p.gen2_only; }
+function v2Draw() {
+  var q = $("v2-q").value.trim().toLowerCase(), ul = $("v2-list"); ul.textContent = "";
+  var shown = 0, picked = 0;
+  V2.cat.forEach(function (p) {
+    if (p.kind === "addin" || !v2Fits(p)) { delete V2.pick[p.id]; return; }
+    if (V2.pick[p.id]) picked++;
+    var hay = (p.name + " " + p.kind + " " + (p.summary || "")).toLowerCase();
+    if (q && hay.indexOf(q) < 0 && !V2.pick[p.id]) return;
+    shown++;
+    var li = el("li"), lab = el("label", "whereopt"), cb = el("input");
+    cb.type = "checkbox"; cb.checked = !!V2.pick[p.id];
+    cb.onchange = function () { if (cb.checked) V2.pick[p.id] = true; else delete V2.pick[p.id]; v2Draw(); };
+    var t = el("span", null, p.name + " " + p.version); t.appendChild(el("small", null, p.kind + (p.summary ? " \u00b7 " + p.summary : "")));
+    lab.appendChild(cb); lab.appendChild(t); li.appendChild(lab); ul.appendChild(li);
+  });
+  text($("v2-count"), picked + " chosen" + (q ? " \u00b7 " + shown + " shown" : "") + " (the list shows only plugins with a build for this MPC)");
+}
+api("/api/catalog").then(function (r) { V2.cat = (r.plugins || r || []).slice().sort(function (a, b) { return a.name.localeCompare(b.name); }); v2Draw(); })
+  .catch(function (e) { msg($("v2-msg"), e.message, "err"); });
+$("v2-q").addEventListener("input", v2Draw);
+Array.prototype.forEach.call(document.getElementsByName("v2-arch"), function (r) { r.addEventListener("change", v2Draw); });
+$("v2-out-browse").addEventListener("click", function () { openBrowse("dir", $("v2-out"), $("v2-out").value.trim()); });
+function v2Poll(since) {
+  api("/api/stick/job?since=" + since).then(function (j) {
+    var log = $("v2-log");
+    if (j.lines.length) { log.textContent += j.lines.join("\n") + "\n"; log.scrollTop = log.scrollHeight; msg($("v2-msg"), j.lines[j.lines.length - 1]); }
+    if (j.state === "running") { setTimeout(function () { v2Poll(j.next); }, 600); return; }
+    $("v2-build").disabled = $("v2-mgr").disabled = false;
+    msg($("v2-msg"), j.state === "done" ? "Done: " + j.result + ". Eject the drive safely, then follow the steps below." : j.result, j.state === "done" ? "ok" : "err");
+    if (j.state === "done") { v2Roms(); $("v2-ready").hidden = false; $("v2-next").scrollIntoView({ behavior: "smooth", block: "start" }); }
+  }).catch(function () { setTimeout(function () { v2Poll(since); }, 1500); });
+}
+function v2Roms() {   /* the chosen plugins that declare user_files: a file picker per folder, checked and written to the stick */
+  var ul = $("v2-romlist"); ul.textContent = ""; var any = false, out = $("v2-out").value.trim();
+  V2.cat.forEach(function (p) {
+    if ((V2.wrote || []).indexOf(p.id) < 0 || !p.user_files || !p.user_files.length) return;   /* only what this write put on the stick */
+    p.user_files.forEach(function (g) {
+      any = true;
+      var li = el("li"), t = el("div", "t"); t.appendChild(el("b", null, p.name + ": " + g.label));
+      if (g.description) t.appendChild(el("div", "d", g.description));
+      if (g.hint) t.appendChild(el("div", "d small", g.hint));
+      var res = el("div", "d"), fi = el("input"); fi.type = "file"; fi.multiple = true;
+      fi.onchange = function () {
+        if (!fi.files.length) return;
+        var fd = new FormData(); fd.append("out", out); fd.append("id", p.id); fd.append("group", g.path);
+        Array.prototype.forEach.call(fi.files, function (f) { fd.append("file", f, f.name); });
+        text(res, "Checking…");
+        api("/api/vst2stick/userfiles", fd, true).then(function (r) {
+          res.textContent = "";
+          r.files.forEach(function (v) { res.appendChild(el("div", v.status === "ok" ? "" : "small", v.name + ": " + (v.status === "ok" ? "OK" : v.status === "maybe" ? "looks right" : "not used") + (v.message ? " (" + v.message + ")" : ""))); });
+        }).catch(function (e) { text(res, e.message); });
+        fi.value = "";
+      };
+      t.appendChild(res); li.appendChild(t); li.appendChild(fi); ul.appendChild(li);
+    });
+  });
+  $("v2-roms").hidden = !any;
+}
+function v2Write(ids) {
+  var out = $("v2-out").value.trim(); V2.wrote = ids;
+  if (!out) { msg($("v2-msg"), "Pick a USB stick, SD card or folder first.", "err"); return; }
+  if (!ids.length) { msg($("v2-msg"), "Tick at least one plugin.", "err"); return; }
+  $("v2-build").disabled = $("v2-mgr").disabled = true; $("v2-log").hidden = false; $("v2-log").textContent = ""; $("v2-ready").hidden = true;
+  msg($("v2-msg"), "Starting…");
+  api("/api/vst2stick", { out: out, arch: v2Arch(), ids: ids }).then(function () { v2Poll(0); })
+    .catch(function (e) { $("v2-build").disabled = $("v2-mgr").disabled = false; msg($("v2-msg"), e.message, "err"); });
+}
+$("v2-build").addEventListener("click", function () { v2Write(Object.keys(V2.pick)); });
+$("v2-mgr").addEventListener("click", function () { v2Write(["plugin-manager-g2"]); });
+
+/* Mounted drives, as buttons that fill a path field (and, in the folder dialog, jump to a drive: the dialog can't otherwise go above C:\ on Windows). */
+api("/api/drives").then(function (r) {
+  var ds = r.drives || []; if (!ds.length) return;
+  [["l1-drives", "l1-out"], ["v2-drives", "v2-out"]].forEach(function (p) {
+    var box = $(p[0]); box.innerHTML = '<p class="small">Mounted drives: </p>';
+    var ul = el("ul", "list"); box.appendChild(ul);
+    ds.forEach(function (d) {
+      var li = el("li"); var b = el("button", "linkbtn", d.label + " (" + d.path + ")");
+      b.type = "button"; b.onclick = function () { $(p[1]).value = d.path; };
+      li.appendChild(b); ul.appendChild(li);
+    });
+  });
+  var bd = $("bdlgdrives"); bd.hidden = false; bd.appendChild(document.createTextNode("Drives: "));
+  ds.forEach(function (d) {
+    var b = el("button", "linkbtn", d.label); b.type = "button"; b.style.marginRight = "12px";
+    b.onclick = function () { browseTo(d.path); };
+    bd.appendChild(b);
+  });
+}).catch(function () {});
+
+/* Level 1 (beta) stick: ask the MPC OS first, since the stock USB prompt exists only up to 3.9.1. */
+var L1_OS = {
+  "new": "MPC OS 3.10 has no USB prompt, so this stick can't run there. Use the plugin manager stick below: its steps load a small helper once (on 3.10 only), and its welcome screen has an OpenMPC Plugin Manager VST button.",
+  unsure: "Check Menu, Preferences, About (or Settings, Info) on the MPC. If it says 3.9.1 or earlier, choose that. If it says 3.10, use the plugin manager stick below."
+};
+Array.prototype.forEach.call(document.getElementsByName("l1-os"), function (r) {
+  r.addEventListener("change", function () {
+    var old = r.value === "old";
+    $("l1-form").hidden = !old;
+    msg($("l1-os-msg"), old ? "" : L1_OS[r.value], old ? "" : "err");
+  });
+});
+$("l1-bundle-browse").addEventListener("click", function () { openBrowse("file", $("l1-bundle"), $("l1-bundle").value.trim()); });
+$("l1-out-browse").addEventListener("click", function () { openBrowse("dir", $("l1-out"), $("l1-out").value.trim()); });
+$("l1-build").addEventListener("click", function () {
+  var out = $("l1-out").value.trim();
+  if (!out) { msg($("l1-msg"), "Pick an empty USB stick or folder first.", "err"); return; }
+  msg($("l1-msg"), "Checking and writing…");
+  api("/api/stick/g2", { Out: out, Bundle: $("l1-bundle").value.trim() }).then(function (r) {
+    var where = stickOutIsAMountedDrive(out) ? "That's a mounted drive, so it's already on the stick." : "Copy everything in " + r.out + " (hidden files too) to the root of a FAT32 or exFAT USB stick.";
+    msg($("l1-msg"), "Wrote the Level 1 stick (" + r.version + ") to " + r.out + ". " + where + " Eject it safely, then follow the steps below.", "ok");
+  }).catch(function (e) { msg($("l1-msg"), e.message, "err"); });
 });
 
 api("/api/version").then(function (v) {

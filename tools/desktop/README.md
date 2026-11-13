@@ -9,30 +9,89 @@ It uses the same release zips and the same `install.sh` as every other route (`d
 path. What it adds: a friendly page, one copy of each zip over SSH (as a tar stream, so executable bits and symlinks survive), and
 one MPC stop and start around the whole batch when the installers allow it.
 
-A second, independent mode (the tab at the top, "Plugin install (no SSH or connection needed)") is for a device you have no SSH
-access to yet: it builds the no-SSH autorun stick (`docs/USB_STICK.md`, `tools/usb_stick/*.py` -- this is a Go port of the same
-algorithm, `tools/desktop/stick.go`, so the app needs no Python) from your device's own stock Akai firmware image. It opens with a
-plain explanation of what this is, how it works, and what it's compatible with (MPC OS up to 3.9.1 only; a Gen2 device like the
-Live III needs the stick reinserted after every reboot to redo what it did). Scanning a Gen2 firmware image for the salt it needs
-can take a few minutes (it decompresses the image's xz-compressed rootfs with a pure-Go decoder); the page shows periodic progress
-so it's clear it's still working. The stick's own prompt then installs the plugin manager (so you can browse and install more from
-the MPC screen itself) and reapplies every already-installed addin's `LD_PRELOAD` entry (needed on a device with no persistent
-`/etc`, docs/ADDINS.md). SSH access is a separate, collapsed "Advanced" section, closed by default -- most people don't need it.
-If you do: paste your own public key, have the app generate one (the private half is shown once and never kept), or -- with
-heavier warnings, since it's less secure and needs a writable root (refused outright on most Gen2 units) -- set a password
-instead. None of this needs the device's own SSH yet -- that's the point. Both the firmware path and the output folder have a
+The same mode opens with an **easy stick** (`tools/desktop/easystick.go`, added 2026-10-27, offline-tested only): it downloads
+the community "Plugin Manager USB for OPEN MPC" release by Twisted Cable (MIT; <https://github.com/Eurikon/plugin-manager-usb-for-open-mpc>),
+pinned to one reviewed version and checked against a fixed SHA-256, never "latest" (the stick runs as root). The pin is read
+at run time from `tools/desktop/easystick-pin.json` on `main` (version, URL, sha256; the URL must be under that project's
+releases), so adopting a tested release is a one-file PR with no installer release; the `easyStickVersion`/`easyStickSHA256`
+constants are the offline fallback, refreshed at the next installer release, and unpacks it onto an empty drive. It needs no firmware: the bundle carries the
+OS 3.9.1 autorun route and the OS 3.10 controller helper, and picks the Gen1 or Gen2 runtime on the device.
+
+A collapsed **Beta: one-prompt G2 install stick** section (`tools/desktop/g2stick.go`, added 2026-10-29, offline-tested only) asks
+the MPC OS first (the stock USB prompt exists only up to 3.9.1; 3.10 and "not sure" point back to the easy stick) and writes the
+"Level 1" bundle from `tools/usb_g2/build_stick.py`: our own autorun script plus both G2 packages. Before writing anything it
+checks that the bundle's boot files are present, that `payload.sha256` lists exactly one armv7 and one aarch64 package, and that
+each package matches its checksum; it then unpacks onto an empty drive like the easy stick. The installer downloads the bundle named in
+`tools/desktop/g2stick-pin.json` (read from `main` at run time, so a new G2 release is a one-file change; the url must be under this repo's
+releases and the sha256 is checked), and a local bundle file can still be chosen. Each plugin manager release needs a new bundle, built with
+`tools/usb_g2/build_stick.py` from the user's own firmware (only the derived `autorun.check` goes in).
+
+A password SSH stick can't work on a Gen2 (read-only root, found on a Live III 2026-10-29): the page says "Gen2 needs a key", and when the scanned firmware looks Gen2 (its name says Gen2, or it is an aarch64 executable) `stickBuild` refuses a password and the page blocks it.
+
+Below it, a collapsed **Advanced: turn on SSH (for developers)** section (`tools/desktop/stick.go`, a Go port of the salt scan in
+`tools/usb_stick/saltscan.py`, so the app needs no Python) builds a different stick: it reads the device's own stock Akai firmware
+once for the check the stock "USB script" reader needs (MPC OS up to 3.9.1 only; Akai closed that route in 3.10), turns SSH on (paste
+a public key, have the app generate one whose private half is shown once and never kept, or, with heavier warnings, set a password,
+which needs a writable root and is refused on most Gen2 units) and reapplies every already-installed addin's `LD_PRELOAD` entry
+(needed on a device with no persistent `/etc`, docs/ADDINS.md). A checkbox, on by default, also puts the plugin manager on the same
+stick: the manager's files go in unmodified, its `open.sh` is kept as `autorun/manager-open.sh`, and our `open.sh` runs the SSH and
+addin step first (restarting MPC once if the addins' running `LD_PRELOAD` differs, so the manager sees them), then it. The stick's
+`USB-SHA256.json` is rewritten to match. A Gen2 device like the Live III forgets SSH and the addin drop-in at every reboot, so the
+stick is reinserted after each one. The stick no longer installs a preset plugin list itself (`tools/usb_stick/*.py` still does).
+None of this needs the device's own SSH yet. Both the firmware path and the output folder have a
 **Browse…** button (`/api/browse`, a server-side folder/file picker, since a browser's own file input never exposes a real path)
 instead of typing one, and the output folder step also lists this computer's mounted drives (`/api/drives`; Linux, macOS and
 Windows): pick a mounted USB stick there and Build writes the stick straight onto it, with nothing left to copy by hand.
+
+## The start screen
+
+A few questions, one per screen: **which MPC** (model tiles, grouped Gen1 (with the Force) and Gen2; this also picks the build),
+**which MPC OS** (3.10.1 or later, 3.9.1 or earlier, or "not sure", which says where to look), then on 3.9.1 or earlier **SSH?**.
+The answer is a plan: numbered steps marked "on this computer" or "on the MPC", each with a line saying what happens next, and
+the alternatives under **Other ways**. The wording matches the catalog site's Install page guide (`tools/catalog_site/guide.js`):
+change both together.
+
+| MPC OS | Answer | Plan | Other ways |
+|---|---|---|---|
+| 3.10.1+ | (no question) | turn on VST2 Support, then three collapsed ways to put the Plugin Manager in `VST2 Plugins`: over Wi-Fi (Developer mode), USB cable (Controller Mode), stick or card | plugins (and ROMs) straight onto the stick |
+| 3.9.1 or earlier | no SSH | the one-prompt Plugin Manager stick (Force: the turn-on-SSH stick) | the turn-on-SSH stick |
+| 3.9.1 or earlier | SSH | Install over Wi-Fi (Connect) | |
+
+An answer saved by an older version (the removed 3.9.1 Wi-Fi question) asks the SSH question again.
+The Force on 3.10.1 or later is not supported yet and says so. The button shows only that part of the page; **All tools** (top right)
+shows every section and the USB stick / Install over Wi-Fi (SSH) tabs. The answers are kept in the browser (localStorage), so the app
+opens on the plan next time; **Start over** clears them. After connecting, one line names the model, MPC OS, VST2 Support, plugins still
+to move and the Plugin Manager version (read in the same SSH round trip as the rest); on 3.10.1 device patches are not offered and the
+move box shows only when there is something to move.
+
+## MPC OS 3.10.1 and later: plugin stick
+
+MPC OS 3.10.1 loads plugins from a `VST2 Plugins` folder at the root of any drive (Preferences, Enhancements: Enable Enhancements and
+VST2 Support). The **USB stick** tab's first section writes the plugins you tick (the OpenMPC Plugin Manager VST is ticked for you) into
+`<drive>/VST2 Plugins/<Manufacturer> - VST - <Name>/`: each release's plugin folder as it is, with a `plugin.json` written from its
+`plugin-meta.xml` when the release has none (`file32` for Gen1, `file64` for Gen2, the `.so` at the folder root). Downloads are checked
+against the catalog's SHA-256 and opened with the same package checks as an install. A plugin already on the stick is replaced and keeps
+its `user_data` folders (your ROMs). Packages with symbolic links are refused (a FAT stick cannot hold them: install those with the
+Plugin Manager). Nothing on the MPC is modified; insert the stick and restart MPC to see the plugins under External VST Plugins.
+API: `POST /api/vst2stick {out, arch, ids}`, progress on `/api/stick/job` (`vst2stick.go`).
+After the write, chosen plugins that declare `user_files` (their ROMs) get a **Your ROMs and files** row: each file is checked with the
+catalog's rules on the computer and the good ones are written into `<plugin folder>/<path>/` on the stick (`POST /api/vst2stick/userfiles`).
+
+**Moving existing installs (3.10.1).** On 3.10.1 the plugin browser no longer lists plugins registered in `MPC.settings` (every
+install made before), though saved projects still load them. Connected over SSH (Developer mode starts it on 3.10.1), the install tab's
+**MPC OS 3.10.1: move your plugins to VST2 Plugins** box runs `tools/vst2_migrate.sh` on the device: **Check** prints what it would
+copy; **Move** stops MPC, copies every plugin folder (user files included, plus shared skin folders such as `AW Skin`) into
+`VST2 Plugins` on the same drive with a `plugin.json`, and starts MPC. Nothing is deleted and `MPC.settings` is not edited.
+`vst2_migrate.sh` in this folder is an embedded copy of `tools/vst2_migrate.sh` (a test keeps them identical). API: `POST /api/vst2migrate {apply}`.
 
 ## What it does, in order
 
 1. **Connect:** SSH as root with your password, a key in `~/.ssh` (no passphrase), or neither on a device whose root has no password. It reads the device (32-bit ARM or Gen2 aarch64: Gen2 gets the catalog's aarch64 zips; `tar`?
    `systemctl`? where is `MPC.settings`?) and refuses one that is not an MPC OS device. The device's key fingerprint is shown; nothing
    about the device is saved.
-   The device scan lists every writable `Synths` location (the internal drive — `/sdcard/Synths` on Gen1/Force, `/nvme/Synths` on Gen2 such as the Live III where `/sdcard` isn't mounted — and `/media/*/Synths` for cards and drives; read-only mounts such as
+   The device scan lists every writable `Synths` location (the internal drive — `/sdcard/Synths` on Gen1/Force, `/nvme/Synths` on a Gen2 Live III and `/storage/Synths` on a Gen2 MPC One or Key 37 (no NVMe), where `/sdcard` isn't mounted — and `/media/*/Synths` for cards and drives; read-only mounts such as
    MPC's own content folder are skipped, and the same storage reached by two paths is listed once; the internal drive's `Synths` folder is created at connect when it is missing, 2026-10-11). Step 3 lets you pick where to install, the
-   internal drive by default, and warns when MPC does not list the folder as a content location. A writable drive under `/media` (its own
+   internal drive by default, and warns when MPC does not list the folder as a content location (the plugin still loads, but with no skin; the job log repeats it as a `WARNING`, and a package's `install.sh` prints the same warning on stderr, comparing whole entries and ignoring a trailing slash, 2026-10-27). A writable drive under `/media` (its own
    mount point, not MPC OS's `az01-*`/`acvs-*`) that has no `Synths` folder gets a **Create Synths folder** button in that box
    (`/api/mkroot`; only a drive from the last scan is accepted, never a typed path), after which it is a plugin location (2026-10-14, offline). A drive that cannot store symbolic links
    (FAT, exFAT, NTFS) is refused for a package that needs them, and so is a drive without room. A drive mounted `noexec` (an MPC/Force's SSD is) is refused too: MPC cannot load a plugin from it, so the plugin would be listed but only show "Load Plugin".
@@ -97,6 +156,10 @@ show an empty touchscreen page". It warns and never blocks. Tests: `catalog_test
 
 What was installed is written to `<Synths>/.mpc-store` on the device, so `mpc-store.sh update` (the on-device script) knows about it.
 
+## Your ROMs and files
+
+A plugin whose manifest has `user_files` (docs/CATALOG_SPEC.md) gets a step after Install. Pick the files; the app checks each one against the plugin's rules (extension, size, an identification text inside it) and says what it is ("Virus C: OK") or why it is wrong, before copying the good ones into the plugin's folder on the device. The folder lists what is there, checked the same way, with a Delete button. Names are reduced to their last part and limited to letters, digits, spaces and `. _ - ( ) + , ' &`; a file is copied under a `.part` name and moved into place. The plugin reads these files when it loads, so MPC is not restarted. Code: `userfiles.go`, tests in `userfiles_test.go` (rules, and upload/list/delete against the fake device).
+
 ## Safety
 
 - The page is served on `127.0.0.1` only, behind a random token in the link the app prints. Every request must carry the token, the
@@ -108,7 +171,7 @@ What was installed is written to `<Synths>/.mpc-store` on the device, so `mpc-st
 ## Run it
 
 Download the archive for your system from the releases, unpack it and start `mpc-installer` (double-click it, or run it in a
-terminal). It prints a link and opens it in your browser. `--no-browser` only prints the link; `--port`, `--catalog`, `--no-update-check` and `--version`
+terminal). It prints a link and opens it in your browser. `--no-browser` only prints the link; `--catalog` sets one catalog address and is then used alone (by default the app reads `https://open-mpc.github.io/catalog.json` and, when that does not give a catalog, the old `https://sd88me.github.io/mpc-vst-plugins/catalog.json`, with `patches.json` taken from the same pair; added 2026-10-20, offline tests only); `--port`, `--no-update-check` and `--version`
 exist too.
 
 The first run is unsigned, so the system warns you once:
@@ -131,3 +194,5 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=1.0.0" -o mpc-i
 A browser test of the page against a stand-in device (sshd in a container) lives in `ui_test/`; see its header. The release workflow
 is `.github/workflows/desktop.yml` (Actions, "Desktop installer", Run workflow: builds Windows, macOS and Linux binaries into a
 draft release; install it, try it, then publish).
+
+The SSH stick opens its bundled manager only the first time (it writes `.plugin-manager-opened` on the stick); later insertions just redo SSH and the addins, and a file `open-plugin-manager.txt` on the stick opens it again (2026-10-29: inserting it to get SSH back kept launching the manager). Test: `TestAdvancedStickOpensTheManagerOnlyOnceUnlessAsked`.

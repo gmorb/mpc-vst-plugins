@@ -36,6 +36,51 @@ else
     exit 1
 fi
 
+# Sets root's password. The Force's busybox has no chpasswd (seen on a real Force, 2026-10-29), so try, in order: chpasswd, writing a
+# crypt hash into the shadow file (hash from openssl, or busybox mkpasswd/cryptpw), then passwd fed on stdin. Succeeds only when root's
+# shadow entry really changed, so a silently failing tool is not mistaken for a set password.
+set_root_password() {
+    shadow=${ENABLE_SSH_SHADOW:-/etc/shadow}
+    before=$(grep '^root:' "$shadow" 2>/dev/null || true)
+    changed() { [ "$(grep '^root:' "$shadow" 2>/dev/null || true)" != "$before" ]; }
+    if command -v chpasswd >/dev/null 2>&1; then
+        echo "root:$1" | chpasswd 2>/dev/null || true
+        changed && return 0
+    fi
+    h=""
+    if command -v openssl >/dev/null 2>&1; then h=$(openssl passwd -6 "$1" 2>/dev/null || true)
+    elif command -v mkpasswd >/dev/null 2>&1; then h=$(mkpasswd -m sha512 "$1" 2>/dev/null || true)
+    elif command -v cryptpw >/dev/null 2>&1; then h=$(cryptpw -m sha512 "$1" 2>/dev/null || true)
+    fi
+    case "$h" in
+        '$'*)
+            cp -p "$shadow" "$shadow.mpc-usb.bak" 2>/dev/null || true
+            if awk -F: -v OFS=: -v h="$h" '$1 == "root" { $2 = h } { print }' "$shadow" > "$shadow.mpc-usb.new" 2>/dev/null \
+                && [ -s "$shadow.mpc-usb.new" ]; then
+                cat "$shadow.mpc-usb.new" > "$shadow"
+            fi
+            rm -f "$shadow.mpc-usb.new"
+            changed && return 0 ;;
+    esac
+    if command -v passwd >/dev/null 2>&1; then
+        printf '%s\n%s\n' "$1" "$1" | passwd root >/dev/null 2>&1 || true
+        changed && return 0
+    fi
+    return 1
+}
+
+# sshd keeps the FIRST value it reads for a directive, and the stock sshd_config starts with `Include /etc/ssh/sshd_config.d/*.conf`
+# (which sets PasswordAuthentication no, and its own AuthorizedKeysFile), so a line edited or appended further down is ignored. Put ours
+# before the Include instead.
+sshd_first() {
+    cfg=${ENABLE_SSH_CONFIG:-/etc/ssh/sshd_config}
+    [ -f "$cfg" ] || : > "$cfg"
+    cp -p "$cfg" "$cfg.mpc-usb.bak" 2>/dev/null || true
+    for l in "$@"; do sed -i "/^${l%% *}[ \t]/d" "$cfg"; done
+    { for l in "$@"; do echo "$l"; done; cat "$cfg"; } > "$cfg.mpc-usb.new" && cat "$cfg.mpc-usb.new" > "$cfg"
+    rm -f "$cfg.mpc-usb.new"
+}
+
 was_ro=0
 if awk '$2 == "/" && $4 ~ /(^|,)ro(,|$)/ { f = 1 } END { exit !f }' /proc/mounts; then was_ro=1; fi
 writable=0
@@ -50,26 +95,26 @@ fi
 if [ $writable = 1 ]; then
     echo "root is writable: installing $([ "$MODE" = key ] && echo "the key" || echo "a password") persistently"
     if [ "$MODE" = key ]; then
-        install -d -m 700 /root/.ssh
+        mkdir -p /root/.ssh && chmod 700 /root/.ssh   # no `install` applet in the Force busybox (set -e killed the script here)
         grep -qxF "$KEY" /root/.ssh/authorized_keys 2>/dev/null || echo "$KEY" >> /root/.ssh/authorized_keys
         chmod 600 /root/.ssh/authorized_keys
+        # the firmware's own drop-in points sshd at /data/ssh/authorized_keys (persistent; /root may be an overlay), so put the key there too
+        mkdir -p /data/ssh 2>/dev/null && { grep -qxF "$KEY" /data/ssh/authorized_keys 2>/dev/null || echo "$KEY" >> /data/ssh/authorized_keys; chmod 600 /data/ssh/authorized_keys; }
+        sshd_first "AuthorizedKeysFile .ssh/authorized_keys /data/ssh/authorized_keys"
     else
-        echo "root:$PASSWORD" | chpasswd
-        for opt in "PasswordAuthentication yes" "PermitRootLogin yes"; do
-            key=${opt%% *}
-            if grep -q "^#\?$key " /etc/ssh/sshd_config 2>/dev/null; then
-                sed -i "s/^#\?$key .*/$opt/" /etc/ssh/sshd_config
-            else
-                echo "$opt" >> /etc/ssh/sshd_config
-            fi
-        done
+        set_root_password "$PASSWORD" || {
+            echo "error: could not set root's password (no chpasswd, openssl, mkpasswd, cryptpw or working passwd here). Use a key instead." >&2
+            exit 1
+        }
+        sshd_first "PasswordAuthentication yes" "PermitRootLogin yes" "AuthenticationMethods any"
     fi
     # enable sshd at boot (host keys are made on first boot by sshdgenkeys.service, already stock)
     for d in /lib/systemd/system /usr/lib/systemd/system; do
         [ -f "$d/sshd.service" ] && ln -sf "$d/sshd.service" /etc/systemd/system/multi-user.target.wants/sshd.service 2>/dev/null && break
     done
     systemctl daemon-reload 2>/dev/null || true
-    systemctl start sshd 2>/dev/null || systemctl restart sshd 2>/dev/null || /usr/sbin/sshd 2>/dev/null || true
+    # restart, not start: an sshd that is already up (a stock Force starts one) would keep its old config and refuse the new setup
+    systemctl restart sshd 2>/dev/null || systemctl start sshd 2>/dev/null || /usr/sbin/sshd 2>/dev/null || true
     sync
     [ $was_ro = 0 ] || mount -o remount,ro / 2>/dev/null || echo "warning: / is still writable; it is read-only again after a reboot" >&2
     echo "done: $([ "$MODE" = key ] && echo "the key is installed" || echo "the password is set") and sshd starts at boot"
@@ -90,7 +135,16 @@ else
         ssh-keygen -q -t ed25519 -f /run/ssh/hostkey -N "" && HK="-h /run/ssh/hostkey"
     fi
     [ -f /run/ssh/sshd.pid ] && kill "$(cat /run/ssh/sshd.pid 2>/dev/null)" 2>/dev/null
-    # shellcheck disable=SC2086
-    /usr/sbin/sshd $HK $AUTHOPTS -o PidFile=/run/ssh/sshd.pid
+    # In its own systemd unit when there is one: started straight from the stick's script, sshd would live in that script's transient
+    # unit and be killed when the unit ends (the plugin manager's hand-over ends it within seconds).
+    if command -v systemd-run >/dev/null 2>&1 && [ -z "${ENABLE_SSH_NO_UNIT:-}" ]; then
+        systemctl stop mpc-usb-sshd >/dev/null 2>&1 || true   # set -e: it exits 5 when there is no such unit yet
+        # shellcheck disable=SC2086
+        systemd-run --unit=mpc-usb-sshd --collect /usr/sbin/sshd -D $HK $AUTHOPTS -o PidFile=/run/ssh/sshd.pid >/dev/null 2>&1 \
+            || /usr/sbin/sshd $HK $AUTHOPTS -o PidFile=/run/ssh/sshd.pid
+    else
+        # shellcheck disable=SC2086
+        /usr/sbin/sshd $HK $AUTHOPTS -o PidFile=/run/ssh/sshd.pid
+    fi
     echo "done: sshd is running with that key, until the next reboot (re-run this, e.g. by reinserting the stick, after one)"
 fi
